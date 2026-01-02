@@ -302,7 +302,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Check if we already missed the event or need to show manual fallback
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    // Stricter mobile check: must have coarse pointer (touch) AND be small screen
+    const isMobile = window.matchMedia('(max-width: 768px)').matches && window.matchMedia('(pointer: coarse)').matches;
 
     if (!isStandalone && isMobile) {
         // If we already have the prompt (fired before DOMContentLoaded)
