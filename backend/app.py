@@ -6,7 +6,7 @@ from datetime import datetime
 from threading import Thread, Event
 import time
 
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, request
 from flask_socketio import SocketIO
 from dotenv import load_dotenv
 
@@ -18,6 +18,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.devices import get_wiz_status, get_dreo_status, get_tapo_status
 from backend.runtime_stats import RuntimeTracker
+from backend.push_notifications import (
+    get_public_key, add_subscription, remove_subscription, send_push_notification
+)
 
 app = Flask(__name__, static_folder='../frontend', static_url_path='')
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
@@ -31,6 +34,12 @@ last_save_time = time.time()
 
 # Background thread control
 stop_event = Event()
+
+# Push notification state tracking
+last_wiz_state = None
+last_power_above_threshold = False
+last_water_notification_time = 0
+POWER_THRESHOLD = 200  # Watts
 
 
 def get_all_device_status():
@@ -52,21 +61,20 @@ def get_all_device_status():
 
 def background_update_thread():
     """Background thread that pushes updates to all clients."""
-    global last_save_time
+    global last_save_time, last_wiz_state, last_power_above_threshold, last_water_notification_time
     print(f"[INFO] Background update thread started (every {UPDATE_INTERVAL}s)")
+    
     while not stop_event.is_set():
         try:
             status = get_all_device_status()
             
             # Update Runtime Tracker
             dreo = status['devices']['dreo']
-            # Only track if device is available to avoid skewing data with 'off' when actually unknown?
-            # User wants "Time On". If unknown, we assume NOT on? Or just skip?
-            # If we skip, we lose total time. If we assume off, we might be wrong.
-            # But if offline, we generally can't confirm ON. So 'is_on' defaults to False.
-            # Let's trust 'is_on'.
-            is_on = dreo.get('is_on', False)
-            runtime_tracker.update(is_on)
+            is_working = dreo.get('is_working', False)
+            runtime_tracker.update(is_working)
+            
+            # Check for push notification triggers
+            check_push_notifications(status)
             
             # Save periodically (e.g., every 60s)
             if time.time() - last_save_time > 60:
@@ -83,6 +91,49 @@ def background_update_thread():
     # Save on exit
     runtime_tracker.save()
     print("[INFO] Background update thread stopped")
+
+
+def check_push_notifications(status):
+    """Check device states and send push notifications for important events."""
+    global last_wiz_state, last_power_above_threshold, last_water_notification_time
+    
+    devices = status.get('devices', {})
+    wiz = devices.get('wiz', {})
+    dreo = devices.get('dreo', {})
+    tapo = devices.get('tapo', {})
+    
+    # Wiz socket on/off notification
+    if wiz.get('available'):
+        current_state = wiz.get('is_on')
+        
+        if last_wiz_state is not None and current_state != last_wiz_state:
+            try:
+                state_text = "ON 💡" if current_state else "OFF 🌙"
+                send_push_notification("Grow Lights", f"Socket turned {state_text}", "wiz-state")
+            except Exception as e:
+                pass  # Push failed, continue silently
+        last_wiz_state = current_state
+    
+    # High power notification
+    if tapo.get('available'):
+        power = tapo.get('current_power_w', 0)
+        is_above = power > POWER_THRESHOLD
+        if is_above and not last_power_above_threshold:
+            try:
+                send_push_notification("⚡ High Power", f"Power: {power:.0f}W (>{POWER_THRESHOLD}W)", "power-alert")
+            except Exception as e:
+                pass  # Push failed, continue silently
+        last_power_above_threshold = is_above
+    
+    # Water tank empty notification (4 hour cooldown)
+    if dreo.get('available') and dreo.get('water_tank_empty'):
+        now = time.time()
+        if now - last_water_notification_time > 4 * 60 * 60:  # 4 hours
+            try:
+                send_push_notification("💧 Water Empty", "Humidifier water tank is empty!", "water-alert")
+            except Exception as e:
+                pass  # Push failed, continue silently
+            last_water_notification_time = now
 
 
 @app.route('/')
@@ -125,6 +176,33 @@ def health():
     })
 
 
+@app.route('/api/push/key')
+def push_public_key():
+    """Get the VAPID public key for push subscription."""
+    return jsonify({'publicKey': get_public_key()})
+
+
+@app.route('/api/push/subscribe', methods=['POST'])
+def push_subscribe():
+    """Subscribe to push notifications."""
+    subscription = request.get_json()
+    if not subscription:
+        return jsonify({'error': 'No subscription data'}), 400
+    
+    add_subscription(subscription)
+    return jsonify({'success': True})
+
+
+@app.route('/api/push/unsubscribe', methods=['POST'])
+def push_unsubscribe():
+    """Unsubscribe from push notifications."""
+    data = request.get_json()
+    endpoint = data.get('endpoint') if data else None
+    if endpoint:
+        remove_subscription(endpoint)
+    return jsonify({'success': True})
+
+
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection - send initial status."""
@@ -160,6 +238,8 @@ if __name__ == '__main__':
     print(f"Update interval: {UPDATE_INTERVAL} seconds")
     print("\nMake sure you have configured your .env file!")
     print("Copy config.example.env to .env and fill in your device credentials.")
+    print("\nTip: Use Cloudflare Tunnel for HTTPS access.")
+    print("See docs/HTTPS_SETUP.md for details.")
     print("\n" + "=" * 50)
     
     # Start background update thread
@@ -167,6 +247,7 @@ if __name__ == '__main__':
     update_thread.start()
     
     try:
+        # HTTP mode - use Cloudflare Tunnel for HTTPS
         socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
     finally:
         stop_event.set()

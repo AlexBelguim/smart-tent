@@ -552,3 +552,181 @@ body::before {
     border: 1px solid var(--border-color);
     color: var(--text-muted);
 }
+
+/* Fail-safe: Force hide popup if in PWA mode */
+@media all and (display-mode: standalone),
+(display-mode: fullscreen) {
+    #installModal {
+        display: none !important;
+    }
+}
+
+/* Header Right Section */
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+/* Settings Indicator - circular gear button like PC version */
+.settings-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: rgba(134, 239, 172, 0.1);
+    border: 1px solid rgba(134, 239, 172, 0.4);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.3s;
+    color: var(--text-secondary);
+}
+
+.settings-indicator svg {
+    width: 18px;
+    height: 18px;
+}
+
+.settings-indicator:hover {
+    background: rgba(34, 197, 94, 0.2);
+    border-color: var(--accent-green);
+    color: var(--accent-green);
+}
+
+/* Settings Modal Specific */
+.settings-modal h3 {
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+/* Notification Permission Status */
+.notification-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: var(--radius-sm);
+    margin-bottom: 0.75rem;
+}
+
+.notification-status.granted {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.3);
+}
+
+.notification-status.denied {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.notification-status span {
+    font-size: 0.9rem;
+}
+
+/* Specific styling to force button appearance */
+#btnEnableNotifications {
+    display: inline-block;
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: center;
+    background-color: var(--accent-green) !important;
+    color: white !important;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 0.25rem;
+}
+
+#btnEnableNotifications:hover {
+    background-color: #16a34a !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.25);
+}
+
+.notification-status button {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    background: var(--accent-green);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.2s;
+    font-weight: 500;
+}
+
+.notification-status button:hover {
+    background: #16a34a;
+    /* Darker green */
+}
+
+.settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.setting-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.setting-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.setting-item input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--accent-green);
+    cursor: pointer;
+}
+
+.setting-item span {
+    flex: 1;
+    font-size: 0.95rem;
+}
+
+.setting-item.threshold {
+    gap: 0.5rem;
+}
+
+.setting-item.threshold span:first-child {
+    flex: none;
+}
+
+.setting-item.threshold span:last-child {
+    flex: none;
+    color: var(--text-muted);
+}
+
+.setting-item input[type="number"] {
+    width: 80px;
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 1rem;
+    text-align: center;
+}
+
+.setting-item input[type="number"]:focus {
+    outline: none;
+    border-color: var(--accent-green);
+}

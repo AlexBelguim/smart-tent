@@ -104,14 +104,34 @@ class DreoDevice:
                 mode = state.get('mode')
                 water_tank_empty = state.get('water_tank_empty', False)
                 
+                # Check for explicit working/misting state from API
+                is_working = state.get('working', state.get('misting', None))
+                
                 target_humidity = state.get('rh_auto')
                 if mode == 'Sleep':
                     target_humidity = state.get('rh_sleep')
                 elif mode == 'Manual':
                     target_humidity = None 
+                
+                # If no explicit working state, infer from humidity vs target
+                # Device is "working" if powered on AND (manual mode OR below target humidity)
+                if is_working is None and is_on:
+                    if mode == 'Manual':
+                        # Manual mode - assume working if powered on
+                        is_working = True
+                    elif target_humidity is not None and current_humidity is not None:
+                        # Auto/Sleep mode - working if current < target
+                        is_working = current_humidity < target_humidity
+                    else:
+                        # Can't determine, fall back to power state
+                        is_working = is_on
+                elif is_working is None:
+                    is_working = False
+                    
             else:
                 # Fallback
                 is_on = False
+                is_working = False
                 current_humidity = None
                 target_humidity = None
                 mode = None
@@ -132,6 +152,7 @@ class DreoDevice:
             return {
                 'available': True,
                 'is_on': is_on,
+                'is_working': is_working,  # True if actively misting
                 'current_humidity': current_humidity,
                 'target_humidity': target_humidity,
                 'mode': mode,

@@ -20,3 +20,10 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# SSL certificates (never commit private keys!)
+*.pem
+
+# Data directory (VAPID keys, subscriptions)
+data/
+runtime_history.json

@@ -2,11 +2,12 @@
     "name": "Smart Tent Dashboard",
     "short_name": "Smart Tent",
     "start_url": "/",
+    "scope": "/",
     "display": "standalone",
     "background_color": "#0a0f0d",
     "theme_color": "#0a0f0d",
     "orientation": "portrait",
-    "id": "/",
+    "id": "smart-tent-pwa",
     "icons": [
         {
             "src": "icon.png",

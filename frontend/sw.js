@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-tent-v2';
+const CACHE_NAME = 'smart-tent-v11';
 const ASSETS = [
     '/',
     '/index.html',
@@ -9,6 +9,8 @@ const ASSETS = [
 
 // Install Event - Cache Core Assets
 self.addEventListener('install', (event) => {
+    // Force the new service worker to activate immediately
+    self.skipWaiting();
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then((cache) => cache.addAll(ASSETS))
@@ -24,6 +26,9 @@ self.addEventListener('activate', (event) => {
                     if (key !== CACHE_NAME) return caches.delete(key);
                 })
             );
+        }).then(() => {
+            // Take control of all clients immediately
+            return self.clients.claim();
         })
     );
 });
@@ -54,6 +59,57 @@ self.addEventListener('fetch', (event) => {
 
             // Return cached response immediately if available, else wait for network
             return cached || networkFetch;
+        })
+    );
+});
+
+// Push Event - Handle incoming push notifications
+self.addEventListener('push', (event) => {
+    console.log('[SW] Push received');
+
+    let data = {
+        title: 'Smart Tent',
+        body: 'Notification',
+        icon: '/icon.png',
+        tag: 'smart-tent-alert'
+    };
+
+    if (event.data) {
+        try {
+            data = { ...data, ...event.data.json() };
+        } catch (e) {
+            data.body = event.data.text();
+        }
+    }
+
+    event.waitUntil(
+        self.registration.showNotification(data.title, {
+            body: data.body,
+            icon: data.icon,
+            tag: data.tag,
+            badge: '/icon.png',
+            vibrate: [200, 100, 200],
+            requireInteraction: false
+        })
+    );
+});
+
+// Notification Click - Open/focus the app
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+            // Focus existing window if open
+            for (const client of clientList) {
+                if ('focus' in client) {
+                    return client.focus();
+                }
+            }
+            // Otherwise open new window
+            if (clients.openWindow) {
+                return clients.openWindow('/');
+            }
         })
     );
 });

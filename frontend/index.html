@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Tent Dashboard</title>
-    <link rel="manifest" href="/manifest.json?v=2">
+    <link rel="manifest" href="/manifest.json?v=11">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15,6 +15,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+
+<body>
     <!-- PWA Install Modal -->
     <div id="installModal" class="modal" style="display: none;">
         <div class="modal-content">
@@ -32,10 +36,42 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-</head>
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal" style="display: none;">
+        <div class="modal-content settings-modal">
+            <h3>⚙️ Notification Settings</h3>
 
-<body>
+            <!-- Notification Permission Status -->
+            <div id="notificationStatus" class="notification-status">
+                <span id="notificationStatusText">Notifications: Checking...</span>
+                <button id="btnEnableNotifications" class="btn-primary">Enable Notifications</button>
+            </div>
+
+            <div class="settings-form">
+                <label class="setting-item">
+                    <input type="checkbox" id="notifyWater" checked>
+                    <span>💧 Water tank empty alerts</span>
+                </label>
+                <label class="setting-item">
+                    <input type="checkbox" id="notifySocket" checked>
+                    <span>💡 Socket on/off alerts</span>
+                </label>
+                <label class="setting-item">
+                    <input type="checkbox" id="notifyPower" checked>
+                    <span>⚡ High power alerts</span>
+                </label>
+                <label class="setting-item threshold">
+                    <span>Power threshold:</span>
+                    <input type="number" id="powerThreshold" value="200" min="0" max="5000" step="10">
+                    <span>W</span>
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button id="btnCloseSettings" class="btn-primary">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <header class="header">
             <div class="header-content">
@@ -43,9 +79,20 @@
                     <span class="logo-icon">🌱</span>
                     <h1>Smart Tent</h1>
                 </div>
-                <div class="status-indicator">
-                    <span class="pulse"></span>
-                    <span class="status-text">Live</span>
+                <div class="header-right">
+                    <button id="btnSettings" class="settings-indicator" title="Settings">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path
+                                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                            </path>
+                        </svg>
+                    </button>
+                    <div class="status-indicator">
+                        <span class="pulse"></span>
+                        <span class="status-text">Live</span>
+                    </div>
                 </div>
             </div>
             <p class="last-update">Last updated: <span id="lastUpdate">--</span></p>

@@ -6,6 +6,53 @@
 let socket = null;
 const FALLBACK_REFRESH_INTERVAL = 10000; // Fallback if Socket.IO fails
 
+// --- Notification Settings ---
+const DEFAULT_SETTINGS = {
+    notifyWater: true,
+    notifySocket: true,
+    notifyPower: true,
+    powerThreshold: 200
+};
+
+let notificationSettings = { ...DEFAULT_SETTINGS };
+
+// State tracking for change detection
+let lastWizState = null;
+let lastPowerAboveThreshold = false;
+
+// Cooldown tracking
+const NOTIFICATION_COOLDOWNS = {
+    water: { last: 0, duration: 4 * 60 * 60 * 1000 },    // 4 hours
+    socket: { last: 0, duration: 60 * 1000 },            // 1 minute
+    power: { last: 0, duration: 5 * 60 * 1000 }          // 5 minutes
+};
+
+function loadSettings() {
+    try {
+        const saved = localStorage.getItem('smartTentSettings');
+        if (saved) {
+            notificationSettings = { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+        }
+    } catch (e) {
+        console.error('Failed to load settings:', e);
+    }
+}
+
+function saveSettings() {
+    try {
+        localStorage.setItem('smartTentSettings', JSON.stringify(notificationSettings));
+    } catch (e) {
+        console.error('Failed to save settings:', e);
+    }
+}
+
+function getSettings() {
+    return notificationSettings;
+}
+
+// Load settings on script init
+loadSettings();
+
 /**
  * Format seconds into human-readable duration
  */
@@ -132,6 +179,9 @@ function updateWizCard(data) {
         powerEl.textContent = 'OFF';
         powerEl.className = 'metric-value off';
     }
+
+    // Check for socket notifications
+    checkWizNotification(data);
 }
 
 /**
@@ -170,14 +220,23 @@ function updateDreoCard(data) {
 
     errorEl.style.display = 'none';
 
-    if (data.is_on) {
+    // Status: On = actively misting, Standby = powered but idle, Off = powered off
+    if (data.is_working) {
+        // Actively misting
         statusBadge.className = 'badge online';
         statusBadge.textContent = 'On';
         powerEl.textContent = 'ON';
         powerEl.className = 'metric-value on';
-    } else {
+    } else if (data.is_on) {
+        // Powered on but not misting (target humidity reached)
         statusBadge.className = 'badge standby';
         statusBadge.textContent = 'Standby';
+        powerEl.textContent = 'IDLE';
+        powerEl.className = 'metric-value standby';
+    } else {
+        // Powered off
+        statusBadge.className = 'badge offline';
+        statusBadge.textContent = 'Off';
         powerEl.textContent = 'OFF';
         powerEl.className = 'metric-value off';
     }
@@ -207,29 +266,72 @@ function updateDreoCard(data) {
 
 // --- Notifications & PWA ---
 
-let lastNotificationTime = 0;
-const NOTIFICATION_COOLDOWN = 4 * 60 * 60 * 1000; // 4 hours
+function canNotify(type) {
+    const cooldown = NOTIFICATION_COOLDOWNS[type];
+    if (!cooldown) return true;
+    const now = Date.now();
+    return (now - cooldown.last) > cooldown.duration;
+}
 
-function checkWaterNotification(data) {
-    // Logic: If water tank is empty AND (never notified OR cooldown passed)
-    if (data.water_tank_empty === true) {
-        const now = Date.now();
-        if (now - lastNotificationTime > NOTIFICATION_COOLDOWN) {
-            sendNotification("💧 Humidifier Alert", "Water tank is empty! Please refill.");
-            lastNotificationTime = now;
-        }
+function markNotified(type) {
+    if (NOTIFICATION_COOLDOWNS[type]) {
+        NOTIFICATION_COOLDOWNS[type].last = Date.now();
     }
 }
 
+function checkWaterNotification(data) {
+    if (!notificationSettings.notifyWater) return;
+
+    if (data.water_tank_empty === true && canNotify('water')) {
+        sendNotification("💧 Humidifier Alert", "Water tank is empty! Please refill.");
+        markNotified('water');
+    }
+}
+
+function checkWizNotification(data) {
+    if (!notificationSettings.notifySocket) return;
+    if (!data.available) return;
+
+    const currentState = data.is_on;
+
+    // Only notify on state CHANGE (not on first load)
+    if (lastWizState !== null && currentState !== lastWizState && canNotify('socket')) {
+        const stateText = currentState ? "turned ON 💡" : "turned OFF 🌙";
+        sendNotification("Grow Lights", `Socket ${stateText}`);
+        markNotified('socket');
+    }
+
+    lastWizState = currentState;
+}
+
+function checkPowerNotification(data) {
+    if (!notificationSettings.notifyPower) return;
+    if (!data.available) return;
+
+    const power = data.current_power_w || 0;
+    const threshold = notificationSettings.powerThreshold || 200;
+    const isAbove = power > threshold;
+
+    // Only notify when crossing ABOVE the threshold (not continuously)
+    if (isAbove && !lastPowerAboveThreshold && canNotify('power')) {
+        sendNotification("⚡ High Power Alert", `Power usage: ${power.toFixed(0)}W (threshold: ${threshold}W)`);
+        markNotified('power');
+    }
+
+    lastPowerAboveThreshold = isAbove;
+}
+
 function sendNotification(title, body) {
+    // Only send notifications in PWA mode
+    if (!isRunningAsPWA) return;
     if (!("Notification" in window)) return;
 
     if (Notification.permission === "granted") {
         try {
             const notification = new Notification(title, {
                 body: body,
-                icon: 'https://api.iconify.design/noto:potted-plant.svg', // Use same icon as PWA
-                tag: 'smart-tent-alert' // Prevent stacking
+                icon: '/icon.png',
+                tag: 'smart-tent-' + title.replace(/\s/g, '-').toLowerCase()
             });
             notification.onclick = function () { window.focus(); };
         } catch (e) {
@@ -243,37 +345,157 @@ window.addEventListener('load', () => {
     // Service Worker
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js')
-            .then(reg => console.log('SW registered!', reg))
+            .then(reg => {
+                console.log('SW registered!', reg);
+                // Subscribe to push notifications in PWA mode
+                if (isRunningAsPWA && 'PushManager' in window) {
+                    subscribeToPush(reg);
+                }
+            })
             .catch(err => console.log('SW registration failed:', err));
     }
     // Notifications
     if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
-        // Request on user interaction usually, but let's try on load or wait for first click
-        // Modern browsers block auto-request.
-        // We'll add a simple click listener to the body or a specific element if needed.
-        // For now, let's try requesting immediately (might be blocked) or assume user has interactions.
-        // Better: trigger on first click anywhere
         document.body.addEventListener('click', function requestNote() {
-            Notification.requestPermission();
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted' && isRunningAsPWA) {
+                    // Re-attempt push subscription after permission granted
+                    navigator.serviceWorker.ready.then(reg => subscribeToPush(reg));
+                }
+            });
             document.body.removeEventListener('click', requestNote);
         }, { once: true });
     }
 });
 
+/**
+ * Subscribe to Web Push notifications
+ */
+async function subscribeToPush(registration, forceUpdate = false) {
+    try {
+        console.log('[PUSH] Checking subscription...');
+
+        // Get VAPID public key from server
+        const response = await fetch('/api/push/key');
+        const { publicKey } = await response.json();
+
+        if (!publicKey) {
+            console.error('[PUSH] No public key from server');
+            return;
+        }
+
+        // Convert base64 to Uint8Array
+        const urlBase64ToUint8Array = (base64String) => {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
+        };
+
+        const serverKey = urlBase64ToUint8Array(publicKey);
+
+        // Check if already subscribed
+        const existingSub = await registration.pushManager.getSubscription();
+
+        if (existingSub) {
+            // Check if key matches
+            const currentKeyBuffer = existingSub.options.applicationServerKey;
+
+            // Convert ArrayBuffer to Uint8Array for comparison
+            const currentKey = currentKeyBuffer ? new Uint8Array(currentKeyBuffer) : null;
+
+            let keysMatch = true;
+            if (currentKey) {
+                if (currentKey.length !== serverKey.length) keysMatch = false;
+                else {
+                    for (let i = 0; i < currentKey.length; i++) {
+                        if (currentKey[i] !== serverKey[i]) {
+                            keysMatch = false;
+                            break;
+                        }
+                    }
+                }
+            } else {
+                keysMatch = false; // No key in existing subscription?
+            }
+
+            if (keysMatch && !forceUpdate) {
+                console.log('[PUSH] Already subscribed with correct key');
+                return;
+            }
+
+            console.log('[PUSH] Key mismatch or forced update. Re-subscribing...');
+            await existingSub.unsubscribe();
+        }
+
+        // Request permission if needed
+        if (Notification.permission !== 'granted') {
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+                console.log('[PUSH] Notification permission denied');
+                return;
+            }
+        }
+
+        // Subscribe
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: serverKey
+        });
+
+        console.log('[PUSH] New subscription endpoint:', subscription.endpoint);
+
+        // Send subscription to server
+        await fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(subscription.toJSON())
+        });
+
+        console.log('[PUSH] Subscribed successfully!');
+        if (typeof updateNotificationStatus === 'function') updateNotificationStatus();
+
+    } catch (error) {
+        console.error('[PUSH] Subscription failed:', error);
+    }
+}
+
 
 // --- PWA Install Prompt ---
 
+// Check IMMEDIATELY if running as PWA - before any other logic
+const isRunningAsPWA = window.matchMedia('(display-mode: standalone)').matches ||
+    window.matchMedia('(display-mode: fullscreen)').matches ||
+    window.navigator.standalone === true; // iOS Safari
+
+// Stricter mobile check: must have coarse pointer (touch) AND be small screen
+const isMobileDevice = window.matchMedia('(max-width: 768px)').matches && window.matchMedia('(pointer: coarse)').matches;
+
+// Debug logging
+console.log('[PWA] Display mode standalone:', window.matchMedia('(display-mode: standalone)').matches);
+console.log('[PWA] Display mode fullscreen:', window.matchMedia('(display-mode: fullscreen)').matches);
+console.log('[PWA] Navigator standalone:', window.navigator.standalone);
+console.log('[PWA] Is running as PWA:', isRunningAsPWA);
+console.log('[PWA] Is mobile device:', isMobileDevice);
+
 let deferredPrompt;
-// Global listener must be active immediately
-window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    // We can't update UI here yet if DOM isn't ready, but we set the var.
-    // If DOM is already ready, we update.
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        showInstallModal(true);
-    }
-});
+
+// Only set up install prompt listener if NOT already running as PWA AND on mobile
+if (!isRunningAsPWA && isMobileDevice) {
+    // Global listener must be active immediately
+    window.addEventListener('beforeinstallprompt', (e) => {
+        console.log('[PWA] beforeinstallprompt event fired');
+        e.preventDefault();
+        deferredPrompt = e;
+        // We can't update UI here yet if DOM isn't ready, but we set the var.
+        // If DOM is already ready, we update.
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+            showInstallModal(true);
+        }
+    });
+} else {
+    console.log('[PWA] Skipping install prompt listener - PWA:', isRunningAsPWA, 'Mobile:', isMobileDevice);
+}
 
 function showInstallModal(hasNativePrompt) {
     const installModal = document.getElementById('installModal');
@@ -283,6 +505,19 @@ function showInstallModal(hasNativePrompt) {
 
     if (!installModal) return;
 
+    // Guard: Never show if already running as PWA
+    if (isRunningAsPWA) {
+        console.log('[PWA] Not showing modal - running as PWA');
+        return;
+    }
+
+    // Guard: Never show on non-mobile (desktop)
+    if (!isMobileDevice) {
+        console.log('[PWA] Not showing modal - not a mobile device');
+        return;
+    }
+
+    console.log('[PWA] Showing install modal');
     installModal.style.display = 'flex';
     if (btnInstall) btnInstall.style.display = 'inline-block';
 
@@ -300,27 +535,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const installModal = document.getElementById('installModal');
     const modalText = document.querySelector('.modal-text p');
 
-    // Check if we already missed the event or need to show manual fallback
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-    // Stricter mobile check: must have coarse pointer (touch) AND be small screen
-    const isMobile = window.matchMedia('(max-width: 768px)').matches && window.matchMedia('(pointer: coarse)').matches;
+    // Skip ALL install logic if already running as PWA or not on mobile
+    if (isRunningAsPWA || !isMobileDevice) {
+        console.log('[PWA] DOMContentLoaded - skipping install logic (PWA:', isRunningAsPWA, 'Mobile:', isMobileDevice, ')');
+        return;
+    }
 
-    if (!isStandalone && isMobile) {
-        // If we already have the prompt (fired before DOMContentLoaded)
-        if (deferredPrompt) {
-            showInstallModal(true);
-        } else {
-            // Wait a moment for it
-            setTimeout(() => {
-                // If native prompt arrived late, we might have it now
-                if (deferredPrompt) {
-                    showInstallModal(true);
-                } else {
-                    // Force show manual instructions if no prompt
-                    showInstallModal(false);
-                }
-            }, 2000);
-        }
+    // On mobile, not PWA - show install prompt
+    // If we already have the prompt (fired before DOMContentLoaded)
+    if (deferredPrompt) {
+        showInstallModal(true);
+    } else {
+        // Wait a moment for it
+        setTimeout(() => {
+            // If native prompt arrived late, we might have it now
+            if (deferredPrompt) {
+                showInstallModal(true);
+            } else {
+                // Force show manual instructions if no prompt
+                showInstallModal(false);
+            }
+        }, 2000);
     }
 
     if (btnInstall) {
@@ -415,6 +650,9 @@ function updateTapoCard(data) {
     // Cost calculations
     monthCostEl.textContent = data.month_cost !== undefined ? `${currency} ${data.month_cost.toFixed(2)}` : `${currency} --`;
     yearCostEl.textContent = data.year_cost !== undefined ? `${currency} ${data.year_cost.toFixed(2)}` : `${currency} --`;
+
+    // Check for power notifications
+    checkPowerNotification(data);
 }
 
 /**
@@ -490,6 +728,131 @@ function init() {
         console.log('Socket.IO not available, using polling fallback');
         fetchStatusFallback();
         setInterval(fetchStatusFallback, FALLBACK_REFRESH_INTERVAL);
+    }
+
+    // Initialize settings modal
+    initSettingsModal();
+}
+
+/**
+ * Initialize settings modal
+ */
+function initSettingsModal() {
+    const btnSettings = document.getElementById('btnSettings');
+    const settingsModal = document.getElementById('settingsModal');
+    const btnCloseSettings = document.getElementById('btnCloseSettings');
+
+    // Only show settings in PWA mode (notifications only work in PWA)
+    if (!isRunningAsPWA) {
+        if (btnSettings) btnSettings.style.display = 'none';
+        return;
+    }
+
+    // Settings form elements
+    const notifyWater = document.getElementById('notifyWater');
+    const notifySocket = document.getElementById('notifySocket');
+    const notifyPower = document.getElementById('notifyPower');
+    const powerThreshold = document.getElementById('powerThreshold');
+
+    // Load current settings into form
+    function loadSettingsToForm() {
+        if (notifyWater) notifyWater.checked = notificationSettings.notifyWater;
+        if (notifySocket) notifySocket.checked = notificationSettings.notifySocket;
+        if (notifyPower) notifyPower.checked = notificationSettings.notifyPower;
+        if (powerThreshold) powerThreshold.value = notificationSettings.powerThreshold;
+    }
+
+    // Save settings from form
+    function saveSettingsFromForm() {
+        notificationSettings.notifyWater = notifyWater?.checked ?? true;
+        notificationSettings.notifySocket = notifySocket?.checked ?? true;
+        notificationSettings.notifyPower = notifyPower?.checked ?? true;
+        notificationSettings.powerThreshold = parseInt(powerThreshold?.value) || 200;
+        saveSettings();
+    }
+
+    // Notification permission UI elements
+    const notificationStatus = document.getElementById('notificationStatus');
+    const notificationStatusText = document.getElementById('notificationStatusText');
+    const btnEnableNotifications = document.getElementById('btnEnableNotifications');
+
+    // Update notification permission status display
+    function updateNotificationStatus() {
+        if (!("Notification" in window)) {
+            if (notificationStatusText) notificationStatusText.textContent = "Notifications: Not supported";
+            if (btnEnableNotifications) btnEnableNotifications.style.display = 'none';
+            if (notificationStatus) notificationStatus.className = 'notification-status denied';
+            return;
+        }
+
+        const permission = Notification.permission;
+        if (permission === 'granted') {
+            if (notificationStatusText) notificationStatusText.textContent = "✓ Notifications enabled";
+            if (btnEnableNotifications) btnEnableNotifications.style.display = 'none';
+            if (notificationStatus) notificationStatus.className = 'notification-status granted';
+        } else if (permission === 'denied') {
+            if (notificationStatusText) notificationStatusText.textContent = "✗ Notifications blocked";
+            if (btnEnableNotifications) btnEnableNotifications.style.display = 'none';
+            if (notificationStatus) notificationStatus.className = 'notification-status denied';
+        } else {
+            if (notificationStatusText) notificationStatusText.textContent = "Notifications: Not enabled";
+            if (btnEnableNotifications) btnEnableNotifications.style.display = 'block';
+            if (notificationStatus) notificationStatus.className = 'notification-status';
+        }
+    }
+
+    // Enable notifications button click
+    if (btnEnableNotifications) {
+        btnEnableNotifications.onclick = async () => {
+            try {
+                // Pulse effect
+                btnEnableNotifications.textContent = "Checking...";
+
+                const permission = await Notification.requestPermission();
+                updateNotificationStatus();
+
+                if (permission === 'granted') {
+                    // Subscribe to push notifications (Force update to ensure key match)
+                    const reg = await navigator.serviceWorker.ready;
+                    await subscribeToPush(reg, true);
+                }
+            } catch (e) {
+                console.error('Notification permission error:', e);
+                btnEnableNotifications.textContent = "Error";
+            }
+        };
+    }
+
+    // Open modal
+    if (btnSettings) {
+        btnSettings.onclick = () => {
+            loadSettingsToForm();
+            updateNotificationStatus();
+            if (settingsModal) settingsModal.style.display = 'flex';
+        };
+    }
+
+    // Close modal
+    if (btnCloseSettings) {
+        btnCloseSettings.onclick = () => {
+            if (settingsModal) settingsModal.style.display = 'none';
+        };
+    }
+
+    // Save on change
+    [notifyWater, notifySocket, notifyPower, powerThreshold].forEach(el => {
+        if (el) {
+            el.addEventListener('change', saveSettingsFromForm);
+        }
+    });
+
+    // Close on background click
+    if (settingsModal) {
+        settingsModal.onclick = (e) => {
+            if (e.target === settingsModal) {
+                settingsModal.style.display = 'none';
+            }
+        };
     }
 }
 
