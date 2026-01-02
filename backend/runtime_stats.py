@@ -1,0 +1,132 @@
+import json
+import os
+import time
+from collections import deque
+from datetime import datetime, timedelta
+
+HISTORY_FILE = 'runtime_history.json'
+MAX_HISTORY_SECONDS = 7 * 24 * 3600  # 7 Days
+
+class RuntimeTracker:
+    def __init__(self):
+        self.history = deque()  # Stores (timestamp, is_on)
+        self.all_time = {
+            'total_seconds': 0,
+            'on_seconds': 0,
+            'start_time': int(time.time())
+        }
+        self.load()
+
+    def load(self):
+        """Load history from file."""
+        if os.path.exists(HISTORY_FILE):
+            try:
+                with open(HISTORY_FILE, 'r') as f:
+                    data = json.load(f)
+                    # Convert list back to deque
+                    self.history = deque(data.get('history', []))
+                    self.all_time = data.get('all_time', self.all_time)
+                    print(f"[RUNTIME] Loaded history: {len(self.history)} samples")
+            except Exception as e:
+                print(f"[RUNTIME] Error loading history: {e}")
+
+    def save(self):
+        """Save history to file."""
+        try:
+            # Prune before saving to keep file size managed
+            self.prune()
+            with open(HISTORY_FILE, 'w') as f:
+                json.dump({
+                    'history': list(self.history),
+                    'all_time': self.all_time
+                }, f)
+        except Exception as e:
+            print(f"[RUNTIME] Error saving history: {e}")
+
+    def prune(self):
+        """Remove samples older than MAX_HISTORY_SECONDS."""
+        now = time.time()
+        cutoff = now - MAX_HISTORY_SECONDS
+        
+        # history is strictly chronological, so we can pop from left
+        while self.history and self.history[0][0] < cutoff:
+            self.history.popleft()
+
+    def update(self, is_on):
+        """Record a new sample."""
+        now = int(time.time())
+        
+        # Update history
+        self.history.append((now, is_on))
+        
+        # Update all-time cumulative
+        # We assume this update happens every ~5 seconds (or whatever interval)
+        # To be accurate, we should look at delta from last update?
+        # But if we just count samples, we rely on consistent sampling.
+        # Better: calculate delta from last sample if exists.
+        
+        delta = 0
+        if len(self.history) > 1:
+            # The current sample covers the time since the last sample?
+            # Or simplified: if we are called every 5s, we add 5s?
+            # Let's use time difference from previous sample to be robust against downtime.
+            prev_time = self.history[-2][0]
+            delta = now - prev_time
+            
+            # Cap delta to avoid huge jumps if server was off for a day counting as "off" or "on"
+            # If server was off, we didn't track, so we shouldn't add to all_time total ideally,
+            # OR we count it as "Off" time? User said "All Time".
+            # Usually "All Time" means "Since monitoring started".
+            # If server is off, we don't know state. Let's only count tracked time.
+            if delta > 300: # 5 minutes gap -> consider gap (don't add to total)
+                delta = 0
+        
+        if delta > 0:
+            self.all_time['total_seconds'] += delta
+            # If it WAS on during this interval?
+            # We use the previous state to determine the interval's state
+            prev_state = self.history[-2][1]
+            if prev_state:
+                self.all_time['on_seconds'] += delta
+
+    def get_metrics(self):
+        """Calculate Day, Week, and All-Time duty cycles."""
+        now = time.time()
+        
+        def calculate_window(seconds):
+            cutoff = now - seconds
+            on_time = 0
+            total_time = 0
+            
+            # Iterate history (newest to oldest is effectively reversed, but deque is indexable)
+            # Efficient enough for 100k items in Python?
+            # optimization: iterating a list of 100k items is fast (ms).
+            
+            for ts, state in self.history:
+                if ts >= cutoff:
+                    # simplistic: count each sample as covering the interval to the *next* sample?
+                    # or just count points?
+                    # Counting points is easier but assumes regular sampling.
+                    # Let's count points and assume uniform distribution for rolling window approx.
+                    total_time += 1
+                    if state:
+                        on_time += 1
+            
+            return (on_time / total_time * 100) if total_time > 0 else 0
+
+        # Optimization: calculating window with accurate durations is better than point counting,
+        # but point counting is "good enough" if sampling is 5s steady.
+        # Let's stick to point counting for the rolling windows for simplicity/speed.
+        
+        day_pct = calculate_window(24 * 3600)
+        week_pct = calculate_window(7 * 24 * 3600)
+        
+        all_time_pct = 0
+        if self.all_time['total_seconds'] > 0:
+             all_time_pct = (self.all_time['on_seconds'] / self.all_time['total_seconds']) * 100
+             
+        return {
+            'day': round(day_pct, 1),
+            'week': round(week_pct, 1),
+            'all_time': round(all_time_pct, 1)
+        }

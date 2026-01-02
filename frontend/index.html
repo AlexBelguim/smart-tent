@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Tent Dashboard</title>
+    <link rel="manifest" href="/manifest.json?v=2">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0a0f0d">
+    <meta name="description" content="Monitor your grow tent devices - lights, humidifier, and energy consumption">
+    <link rel="stylesheet" href="styles.css?v=final">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- PWA Install Modal -->
+    <div id="installModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-icon">
+                <img src="https://api.iconify.design/noto:potted-plant.svg" alt="App Icon">
+            </div>
+            <div class="modal-text">
+                <h3>Install Smart Tent</h3>
+                <p>Install this app on your home screen for quick access and offline support.</p>
+            </div>
+            <div class="modal-actions">
+                <button id="btnDismiss" class="btn-secondary">Not Now</button>
+                <button id="btnInstall" class="btn-primary">Install</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-icon">🌱</span>
+                    <h1>Smart Tent</h1>
+                </div>
+                <div class="status-indicator">
+                    <span class="pulse"></span>
+                    <span class="status-text">Live</span>
+                </div>
+            </div>
+            <p class="last-update">Last updated: <span id="lastUpdate">--</span></p>
+        </header>
+
+        <main class="dashboard">
+            <!-- Grow Lights Card (Wiz) -->
+            <div class="card card-lights" id="wizCard">
+                <div class="card-header">
+                    <div class="card-icon">💡</div>
+                    <div class="card-title">
+                        <h2>Grow Lights</h2>
+                        <span class="device-type">Wiz Socket</span>
+                    </div>
+                    <div class="status-badge" id="wizStatus">
+                        <span class="badge offline">Offline</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="metric-grid metric-single">
+                        <div class="metric metric-large">
+                            <span class="metric-label">Status</span>
+                            <span class="metric-value" id="wizPower">--</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-error" id="wizError" style="display: none;"></div>
+            </div>
+
+            <!-- Humidifier Card (Dreo) -->
+            <div class="card card-humidity" id="dreoCard">
+                <div class="card-header">
+                    <div class="card-icon">💨</div>
+                    <div class="card-title">
+                        <h2>Humidifier</h2>
+                        <span class="device-type">Dreo Smart</span>
+                    </div>
+                    <div class="status-badge" id="dreoStatus">
+                        <span class="badge offline">Offline</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="metric-grid">
+                        <div class="metric">
+                            <span class="metric-label">Status</span>
+                            <span class="metric-value" id="dreoPower">--</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Humidity</span>
+                            <span class="metric-value" id="dreoHumidity">--%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Target</span>
+                            <span class="metric-value" id="dreoTarget">--%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Mode</span>
+                            <span class="metric-value" id="dreoMode">--</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Water Tank</span>
+                            <span class="metric-value" id="dreoWater">--</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Day On %</span>
+                            <span class="metric-value" id="dreoRuntimeDay">--%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Week On %</span>
+                            <span class="metric-value" id="dreoRuntimeWeek">--%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">All Time %</span>
+                            <span class="metric-value" id="dreoRuntimeAll">--%</span>
+                        </div>
+
+                    </div>
+                </div>
+                <div class="card-error" id="dreoError" style="display: none;"></div>
+            </div>
+
+            <!-- Energy Monitor Card (Tapo) -->
+            <div class="card card-energy" id="tapoCard">
+                <div class="card-header">
+                    <div class="card-icon">⚡</div>
+                    <div class="card-title">
+                        <h2>Energy Monitor</h2>
+                        <span class="device-type">Tapo P110</span>
+                    </div>
+                    <div class="status-badge" id="tapoStatus">
+                        <span class="badge offline">Offline</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="metric-grid">
+                        <div class="metric metric-large">
+                            <span class="metric-label">Current Power</span>
+                            <span class="metric-value power-value" id="tapoPower">-- W</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Today</span>
+                            <span class="metric-value" id="tapoToday">-- kWh</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">This Month</span>
+                            <span class="metric-value" id="tapoMonth">-- kWh</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Month Cost</span>
+                            <span class="metric-value" id="tapoMonthCost">€ --</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Year (12mo)</span>
+                            <span class="metric-value" id="tapoYear">-- kWh</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Year Cost</span>
+                            <span class="metric-value" id="tapoYearCost">€ --</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-error" id="tapoError" style="display: none;"></div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>Real-time updates via Socket.IO (every 5 seconds)</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
