@@ -6,7 +6,8 @@ from datetime import datetime
 from threading import Thread, Event
 import time
 
-from flask import Flask, jsonify, send_from_directory, request
+from flask import Flask, jsonify, send_from_directory, request, Response, stream_with_context
+import subprocess
 from flask_socketio import SocketIO
 from dotenv import load_dotenv
 
@@ -40,6 +41,41 @@ last_wiz_state = None
 last_power_above_threshold = False
 last_water_notification_time = 0
 POWER_THRESHOLD = 200  # Watts
+RTSP_URL = "rtsp://192.168.1.246:554/Streaming/Channels/101"
+
+
+
+def gen_frames_ffmpeg():
+    """Stream directly from ffmpeg using mpjpeg format which includes boundaries."""
+    cmd = [
+        'ffmpeg',
+        '-rtsp_transport', 'tcp',
+        '-i', RTSP_URL,
+        '-c:v', 'mjpeg',      # Transcode to MJPEG
+        '-q:v', '10',         # Quality
+        '-r', '15',           # Limit framerate
+        '-f', 'mpjpeg',       # Multipart JPEG format
+        '-boundary_tag', 'ffmpeg', # Custom boundary string
+        '-'
+    ]
+    
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    
+    try:
+        # Stream stdout directly to the client
+        while True:
+            # Read small chunks
+            data = process.stdout.read(1024)
+            if not data:
+                break
+            yield data
+    except GeneratorExit:
+        process.terminate()
+        process.wait()
+    except Exception as e:
+        print(f"Stream error: {e}")
+        process.terminate()
+
 
 
 def get_all_device_status():
@@ -228,6 +264,15 @@ def handle_request_update():
         socketio.emit('status_update', status)
     except Exception as e:
         print(f"[ERROR] Failed to send requested update: {e}")
+
+
+@app.route('/video_feed')
+def video_feed():
+    """Video streaming route."""
+    return Response(
+        stream_with_context(gen_frames_ffmpeg()),
+        mimetype='multipart/x-mixed-replace; boundary=ffmpeg'
+    )
 
 
 if __name__ == '__main__':

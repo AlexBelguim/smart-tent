@@ -730,3 +730,131 @@ body::before {
     outline: none;
     border-color: var(--accent-green);
 }
+
+/* Camera Card */
+.card-camera {
+    --card-accent: var(--accent-red);
+    grid-column: 1 / -1;
+    /* Full width */
+}
+
+.camera-loading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    z-index: 1;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    border-left-color: var(--accent-red);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+
+.camera-body {
+    padding: 0;
+    /* Full bleed or tight padding? default has padding. Let's keep default padding but custom content */
+}
+
+.camera-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16/9;
+    background: #000;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.camera-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.4);
+    transition: opacity 0.3s;
+    z-index: 2;
+    /* Ensure easy clicking */
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.camera-container.active .camera-overlay {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.btn-play {
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    padding: 0.75rem 1.5rem;
+    border-radius: 2rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    transition: transform 0.2s, background 0.2s;
+    /* Allow clicking the button directly, bubbles to container */
+    pointer-events: auto;
+}
+
+.camera-overlay:active .btn-play {
+    transform: scale(0.95);
+    background: rgba(0, 0, 0, 0.8);
+}
+
+.footer .version {
+    font-size: 0.75rem;
+    opacity: 0.5;
+    margin-top: 0.25rem;
+}
+
+.camera-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.badge.streaming {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--accent-red);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+    0% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 6px transparent;
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 transparent;
+    }
+}

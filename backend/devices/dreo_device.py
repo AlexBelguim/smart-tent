@@ -102,7 +102,7 @@ class DreoDevice:
                 is_on = state.get('power_switch', False)
                 current_humidity = state.get('humidity_sensor')
                 mode = state.get('mode')
-                water_tank_empty = state.get('water_tank_empty', False)
+
                 
                 # Check for explicit working/misting state from API
                 is_working = state.get('working', state.get('misting', None))
@@ -129,13 +129,32 @@ class DreoDevice:
                     is_working = False
                     
             else:
-                # Fallback
-                is_on = False
-                is_working = False
-                current_humidity = None
-                target_humidity = None
-                mode = None
-                water_tank_empty = False
+                # Handle Object case (fallback)
+                try:
+                    is_on = getattr(device, 'is_on', False)
+                    current_humidity = getattr(device, 'humidity', None)
+                    target_humidity = getattr(device, 'target_humidity', None)
+                    mode = getattr(device, 'mode', None)
+                    water_tank_empty = getattr(device, 'water_tank_empty', None)
+
+                    # Working/Misting logic for object
+                    is_working = getattr(device, 'is_working', None)
+                    
+                    if is_working is None:
+                        if mode == 'Manual' and is_on:
+                            is_working = True
+                        elif target_humidity is not None and current_humidity is not None and is_on:
+                            is_working = current_humidity < target_humidity
+                        else:
+                            is_working = is_on if is_on else False
+                            
+                except Exception as e:
+                    print(f"[DREO] Object parsing error: {e}")
+                    is_on = False
+                    is_working = False
+                    current_humidity = None
+                    target_humidity = None
+                    mode = None
 
             # Track uptime
             if is_on and not self.last_state:
@@ -149,6 +168,10 @@ class DreoDevice:
             if is_on and self.on_since:
                 uptime_seconds = int((datetime.now() - self.on_since).total_seconds())
 
+            # Debug: Print full state to find correct keys
+            # print(f"[DREO DEBUG] Device state keys: {state.keys()}")
+            # print(f"[DREO DEBUG] Full device dump: {device}")
+
             return {
                 'available': True,
                 'is_on': is_on,
@@ -156,41 +179,8 @@ class DreoDevice:
                 'current_humidity': current_humidity,
                 'target_humidity': target_humidity,
                 'mode': mode,
-                'water_tank_empty': water_tank_empty,
                 'uptime_seconds': uptime_seconds
             }
-            
-            # Track when turned on for uptime calculation
-            if is_on and not self.last_state:
-                self.on_since = datetime.now()
-            elif not is_on:
-                self.on_since = None
-                
-            self.last_state = is_on
-            
-            uptime_seconds = None
-            if self.on_since:
-                uptime_seconds = int((datetime.now() - self.on_since).total_seconds())
-            
-            result = {
-                'available': True,
-                'device': 'Dreo Humidifier',
-                'name': device_name,
-                'is_on': is_on,
-                'uptime_seconds': uptime_seconds
-            }
-            
-            # Try to get additional attributes if available
-            if 'humidity' in device:
-                result['humidity'] = device['humidity']
-            if 'targetHumidity' in device:
-                result['target_humidity'] = device['targetHumidity']
-            if 'mode' in device:
-                result['mode'] = device['mode']
-            if 'waterTankEmpty' in device or 'water_tank_empty' in device:
-                result['water_tank_empty'] = device.get('waterTankEmpty', device.get('water_tank_empty', False))
-                
-            return result
             
         except Exception as e:
             error_msg = str(e)

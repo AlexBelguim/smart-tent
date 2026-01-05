@@ -193,7 +193,7 @@ function updateDreoCard(data) {
     const humidityEl = document.getElementById('dreoHumidity');
     const targetEl = document.getElementById('dreoTarget');
     const modeEl = document.getElementById('dreoMode');
-    const waterEl = document.getElementById('dreoWater');
+
     const dayEl = document.getElementById('dreoRuntimeDay');
     const weekEl = document.getElementById('dreoRuntimeWeek');
     const allEl = document.getElementById('dreoRuntimeAll');
@@ -209,7 +209,7 @@ function updateDreoCard(data) {
         humidityEl.textContent = '--%';
         targetEl.textContent = '--%';
         modeEl.textContent = '--';
-        waterEl.textContent = '--';
+
         if (dayEl) dayEl.textContent = '--%';
         if (weekEl) weekEl.textContent = '--%';
         if (allEl) allEl.textContent = '--%';
@@ -246,12 +246,6 @@ function updateDreoCard(data) {
     targetEl.textContent = data.target_humidity !== undefined && data.target_humidity !== null ? `${data.target_humidity}%` : '--';
     modeEl.textContent = data.mode || '--';
 
-    // Check key depending on backend response, usually 'water_tank_empty'
-    // If true, it means empty/warning. If false/u ndefined, it's OK.
-    const isWaterEmpty = data.water_tank_empty === true;
-    waterEl.textContent = isWaterEmpty ? '⚠️ Empty' : '✓ OK';
-    waterEl.className = `metric-value ${isWaterEmpty ? 'off' : ''}`; // Add color if empty?
-
     // Runtime Stats
     if (data.runtime_stats) {
         if (dayEl) dayEl.textContent = `${data.runtime_stats.day}%`;
@@ -282,9 +276,18 @@ function markNotified(type) {
 function checkWaterNotification(data) {
     if (!notificationSettings.notifyWater) return;
 
-    if (data.water_tank_empty === true && canNotify('water')) {
-        sendNotification("💧 Humidifier Alert", "Water tank is empty! Please refill.");
-        markNotified('water');
+    // Logic: If humidifier is OFF (not idle, but actually off) and humidity is 3% below target,
+    // the tank is likely empty because it stopped working.
+    const current = data.current_humidity;
+    const target = data.target_humidity;
+    const isOn = data.is_on;
+
+    // Only trigger if: device is OFF, we have valid readings, and humidity is 3%+ below target
+    if (isOn === false && current && target) {
+        if (current < (target - 3) && canNotify('water')) {
+            sendNotification("💧 Tank Empty", `Humidity is ${current}% (Target: ${target}%). Refill the water tank.`);
+            markNotified('water');
+        }
     }
 }
 
@@ -732,6 +735,89 @@ function init() {
 
     // Initialize settings modal
     initSettingsModal();
+
+    // Initialize Camera
+    initCameraCard();
+}
+
+/**
+ * Initialize Camera Card interactions
+ */
+function initCameraCard() {
+    const container = document.getElementById('cameraContainer');
+    const feed = document.getElementById('cameraFeed');
+    const loading = container?.querySelector('.camera-loading');
+    const statusText = document.getElementById('cameraStatus');
+    const statusBadge = document.getElementById('cameraStatusBadge').querySelector('.badge');
+
+    if (!container || !feed) return;
+
+    let isStreaming = false;
+
+    function startStream() {
+        // Show loading state immediately
+        if (loading) loading.style.display = 'flex';
+
+        // Add timestamp to prevent caching
+        feed.src = "/video_feed?" + new Date().getTime();
+        feed.style.display = 'block';
+        container.classList.add('active');
+        statusText.textContent = "REC";
+        statusBadge.className = "badge streaming";
+        isStreaming = true;
+    }
+
+    function stopStream() {
+        feed.src = "";
+        feed.style.display = 'none';
+        if (loading) loading.style.display = 'none';
+        container.classList.remove('active');
+        statusText.textContent = "Ready";
+        statusBadge.className = "badge";
+        isStreaming = false;
+    }
+
+    // Toggle stream function
+    function toggleStream() {
+        if (isStreaming) {
+            stopStream();
+        } else {
+            startStream();
+        }
+    }
+
+    // click handler
+    container.addEventListener('click', (e) => {
+        // Prevent double firing if localized
+        e.stopPropagation();
+        toggleStream();
+    });
+
+    // Also listen on the button specifically in case of propagation issues
+    const btn = container.querySelector('.btn-play');
+    if (btn) {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleStream();
+        });
+    }
+
+    // When image actually loads (first frame received), hide loading spinner
+    feed.addEventListener('load', () => {
+        if (isStreaming && loading) {
+            loading.style.display = 'none';
+        }
+    });
+
+    // Handle image load error (e.g. backend offline)
+    feed.addEventListener('error', () => {
+        if (isStreaming) {
+            console.error("Stream failed to load");
+            statusText.textContent = "Error";
+            statusBadge.className = "badge offline";
+            if (loading) loading.style.display = 'none';
+        }
+    });
 }
 
 /**

@@ -5,13 +5,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Tent Dashboard</title>
-    <link rel="manifest" href="/manifest.json?v=11">
+    <link rel="manifest" href="/manifest.json?v=15">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#0a0f0d">
     <meta name="description" content="Monitor your grow tent devices - lights, humidifier, and energy consumption">
-    <link rel="stylesheet" href="styles.css?v=final">
+    <link rel="stylesheet" href="styles.css?v=1.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -152,10 +152,7 @@
                             <span class="metric-label">Mode</span>
                             <span class="metric-value" id="dreoMode">--</span>
                         </div>
-                        <div class="metric">
-                            <span class="metric-label">Water Tank</span>
-                            <span class="metric-value" id="dreoWater">--</span>
-                        </div>
+
                         <div class="metric">
                             <span class="metric-label">Day On %</span>
                             <span class="metric-value" id="dreoRuntimeDay">--%</span>
@@ -173,6 +170,7 @@
                 </div>
                 <div class="card-error" id="dreoError" style="display: none;"></div>
             </div>
+
 
             <!-- Energy Monitor Card (Tapo) -->
             <div class="card card-energy" id="tapoCard">
@@ -216,14 +214,41 @@
                 </div>
                 <div class="card-error" id="tapoError" style="display: none;"></div>
             </div>
+
+            <!-- Camera Card (Full Width) -->
+            <div class="card card-camera" id="cameraCard">
+                <div class="card-header">
+                    <div class="card-icon">🎥</div>
+                    <div class="card-title">
+                        <h2>Camera</h2>
+                        <span class="device-type">Live Stream</span>
+                    </div>
+                    <div class="status-badge" id="cameraStatusBadge">
+                        <span class="badge" id="cameraStatus">Ready</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="camera-container" id="cameraContainer">
+                        <div class="camera-overlay">
+                            <button class="btn-play">▶ Watch Stream</button>
+                        </div>
+                        <div class="camera-loading" style="display: none;">
+                            <div class="spinner"></div>
+                        </div>
+                        <img id="cameraFeed" src="" alt="Stream" style="display: none;">
+                    </div>
+                </div>
+            </div>
+
         </main>
 
         <footer class="footer">
             <p>Real-time updates via Socket.IO (every 5 seconds)</p>
+            <p class="version">v1.7</p>
         </footer>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=1.7"></script>
 </body>
 
 </html>
