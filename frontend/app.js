@@ -659,6 +659,13 @@ function updateTapoCard(data) {
 }
 
 /**
+ * Trigger a test notification
+ */
+function triggerTestNotification() {
+    sendNotification("🔔 Test Notification", "This is a test notification with the new icon! 🌿");
+}
+
+/**
  * Handle incoming status update
  */
 function handleStatusUpdate(data) {

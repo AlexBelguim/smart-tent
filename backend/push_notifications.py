@@ -152,7 +152,8 @@ def send_push_notification(title, body, tag=None):
         'title': title,
         'body': body,
         'tag': tag or 'smart-tent-alert',
-        'icon': '/icon.png'
+        'icon': '/icon.png',
+        'badge': '/badge.svg'
     })
     
     success_count = 0

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-tent-v18';
+const CACHE_NAME = 'smart-tent-v22';
 const ASSETS = [
     '/',
     '/index.html',
@@ -87,7 +87,7 @@ self.addEventListener('push', (event) => {
             body: data.body,
             icon: data.icon,
             tag: data.tag,
-            badge: '/icon.png',
+            badge: '/badge.svg',
             vibrate: [200, 100, 200],
             requireInteraction: false
         })
