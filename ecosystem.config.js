@@ -2,7 +2,7 @@ module.exports = {
     apps: [{
         name: "smart-tent",
         script: "backend/app.py",
-        interpreter: "python3",
+        interpreter: "./venv/bin/python",
         env: {
             "FLASK_ENV": "production",
             "PORT": "5000"

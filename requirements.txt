@@ -6,3 +6,4 @@ pydreo-cloud>=1.0.0
 python-dotenv>=1.0.0
 eventlet>=0.30.0
 pywebpush>=2.0.0
+cryptography>=41.0.0

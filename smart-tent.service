@@ -1,0 +1,15 @@
+[Unit]
+Description=Smart Tent Flask App
+After=network.target
+
+[Service]
+User=alexw
+Group=alexw
+WorkingDirectory=/home/alexw/smart-tent
+Environment="FLASK_ENV=production"
+Environment="PATH=/home/alexw/smart-tent/venv/bin"
+ExecStart=/home/alexw/smart-tent/venv/bin/python backend/app.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
