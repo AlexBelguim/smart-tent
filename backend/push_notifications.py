@@ -148,12 +148,20 @@ def send_push_notification(title, body, tag=None):
     if not subscriptions:
         return 0
     
+    badge_file = '/badge.svg'
+    if tag == 'power-alert':
+        badge_file = '/badge-power.svg'
+    elif tag == 'water-alert':
+        badge_file = '/badge-water.svg'
+    elif tag == 'wiz-state':
+        badge_file = '/badge-bulb.svg'
+
     payload = json.dumps({
         'title': title,
         'body': body,
         'tag': tag or 'smart-tent-alert',
         'icon': '/icon.png',
-        'badge': '/badge.svg'
+        'badge': badge_file
     })
     
     success_count = 0
