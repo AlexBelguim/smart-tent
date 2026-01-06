@@ -30,6 +30,34 @@ else
     exit 1
 fi
 
+# Setup Environment Variables
+if [ ! -f ".env" ]; then
+    echo "⚠️  No .env file found."
+    if [ -f "config.example.env" ]; then
+        echo "📝 Creating .env from config.example.env..."
+        cp config.example.env .env
+        echo "❗ ACTION REQUIRED: Please edit .env with your actual credentials!"
+    else
+        echo "❌ config.example.env not found! Cannot create .env automatically."
+    fi
+else
+    echo "✅ .env file already exists."
+fi
+
+# Setup Environment Variables
+if [ ! -f ".env" ]; then
+    echo "⚠️  No .env file found."
+    if [ -f "config.example.env" ]; then
+        echo "📝 Creating .env from config.example.env..."
+        cp config.example.env .env
+        echo "❗ ACTION REQUIRED: Please edit .env with your actual credentials!"
+    else
+        echo "❌ config.example.env not found! Cannot create .env automatically."
+    fi
+else
+    echo "✅ .env file already exists."
+fi
+
 echo "🎉 Setup complete! You can now run the app with:"
 echo "   PM2:     pm2 start ecosystem.config.js"
 echo "   Manual:  ./venv/bin/python backend/app.py"

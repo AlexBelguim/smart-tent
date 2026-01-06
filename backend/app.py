@@ -27,7 +27,8 @@ app = Flask(__name__, static_folder='../frontend', static_url_path='')
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Update interval in seconds
-UPDATE_INTERVAL = 5
+# Update interval in seconds
+UPDATE_INTERVAL = int(os.getenv('POLLING_INTERVAL', 5))
 
 # Runtime Tracker
 runtime_tracker = RuntimeTracker()
