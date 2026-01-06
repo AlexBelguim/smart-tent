@@ -294,7 +294,7 @@ if __name__ == '__main__':
     
     try:
         # HTTP mode - use Cloudflare Tunnel for HTTPS
-        socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+        socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
     finally:
         stop_event.set()
         update_thread.join(timeout=2)
