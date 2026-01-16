@@ -211,7 +211,24 @@ def check_humidity_override(status):
         if current < release_level:
             humidity_override_active = False
             print(f"[FAN] Humidity override OFF: {current}% < {release_level}%")
-            # Note: Don't auto-set speed here, let user's day/night settings take over
+            
+            # Restore correct day/night speed based on grow light state
+            wiz = devices.get('wiz', {})
+            is_day = wiz.get('available') and wiz.get('is_on')
+            
+            # Get day/night speeds from fan status (sent by frontend) or use defaults
+            day_speed = int(os.getenv('FAN_DAY_SPEED', 75))
+            night_speed = int(os.getenv('FAN_NIGHT_SPEED', 30))
+            
+            target_speed = day_speed if is_day else night_speed
+            mode_name = 'day' if is_day else 'night'
+            
+            print(f"[FAN] Restoring {mode_name} mode speed: {target_speed}%")
+            result = fan_device.set_speed(target_speed)
+            if result.get('success'):
+                print(f"[FAN] Successfully restored to {target_speed}%")
+            else:
+                print(f"[FAN] Failed to restore speed: {result.get('error')}")
     else:
         # Not overriding - check if we should trigger
         if current >= trigger_level:
