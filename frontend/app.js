@@ -965,16 +965,25 @@ let currentFanMode = 'night';  // 'day', 'night', or 'control'
 let lastWizOn = null;   // Track wiz state for auto-switching
 let humidityOverrideActive = false;  // True when humidity override is active
 
-// Load saved day/night speeds
-(function loadFanSettings() {
+// Load saved day/night speeds from backend
+(async function loadFanSettings() {
     try {
-        const saved = localStorage.getItem('fanDayNight');
-        if (saved) {
-            const data = JSON.parse(saved);
+        const response = await fetch('/api/fan/settings');
+        if (response.ok) {
+            const data = await response.json();
             fanDaySpeed = data.day || 75;
             fanNightSpeed = data.night || 30;
+            console.log(`[FAN] Loaded settings from backend: day=${fanDaySpeed}%, night=${fanNightSpeed}%`);
+
+            // Update inputs if they exist
+            const dayInput = document.getElementById('fanDaySpeed');
+            const nightInput = document.getElementById('fanNightSpeed');
+            if (dayInput) dayInput.value = fanDaySpeed;
+            if (nightInput) nightInput.value = fanNightSpeed;
         }
-    } catch (e) { }
+    } catch (e) {
+        console.log('[FAN] Failed to load settings from backend, using defaults');
+    }
 })();
 
 /**
@@ -1212,22 +1221,16 @@ async function saveDayNightSettings() {
     fanDaySpeed = Math.max(0, Math.min(100, newDaySpeed));
     fanNightSpeed = Math.max(0, Math.min(100, newNightSpeed));
 
-    // Save to localStorage (for UI persistence)
-    localStorage.setItem('fanDayNight', JSON.stringify({
-        day: fanDaySpeed,
-        night: fanNightSpeed
-    }));
-
-    // Sync to backend (for humidity override restore)
+    // Save to backend
     try {
         await fetch('/api/fan/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ day: fanDaySpeed, night: fanNightSpeed })
         });
-        console.log('[FAN] Settings synced to backend');
+        console.log('[FAN] Settings saved');
     } catch (e) {
-        console.error('[FAN] Failed to sync settings to backend:', e);
+        console.error('[FAN] Failed to save settings:', e);
     }
 
     // Apply current mode speed
