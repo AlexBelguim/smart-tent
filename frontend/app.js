@@ -676,6 +676,9 @@ function handleStatusUpdate(data) {
         updateWizCard(data.devices.wiz);
         updateDreoCard(data.devices.dreo);
         updateTapoCard(data.devices.tapo);
+        if (typeof updateFanCard === 'function') {
+            updateFanCard(data.devices.fan, data.devices.wiz, data.devices.dreo);
+        }
     }
 
     // Update timestamp
@@ -951,3 +954,466 @@ function initSettingsModal() {
 
 // Start the dashboard when DOM is ready
 document.addEventListener('DOMContentLoaded', init);
+
+// ============== FAN CONTROL ==============
+
+let fanAuthPin = null;  // Cached PIN for session
+let pendingFanAction = null;  // { type: 'speed'|'daynight', data: any }
+let fanDaySpeed = 75;   // Day speed from localStorage
+let fanNightSpeed = 30; // Night speed from localStorage
+let currentFanMode = 'night';  // 'day', 'night', or 'control'
+let lastWizOn = null;   // Track wiz state for auto-switching
+let humidityOverrideActive = false;  // True when humidity override is active
+
+// Load saved day/night speeds
+(function loadFanSettings() {
+    try {
+        const saved = localStorage.getItem('fanDayNight');
+        if (saved) {
+            const data = JSON.parse(saved);
+            fanDaySpeed = data.day || 75;
+            fanNightSpeed = data.night || 30;
+        }
+    } catch (e) { }
+})();
+
+/**
+ * Update fan card with status data and auto-switch based on lights/humidity
+ */
+function updateFanCard(data, wizData, dreoData) {
+    const statusBadge = document.querySelector('#fanStatus .badge');
+    const modeEl = document.getElementById('fanMode');
+    const speedEl = document.getElementById('fanSpeed');
+    const signalEl = document.getElementById('fanSignal');
+    const errorEl = document.getElementById('fanError');
+    const card = document.getElementById('fanCard');
+    const dayInput = document.getElementById('fanDaySpeed');
+    const nightInput = document.getElementById('fanNightSpeed');
+    const btnApply = document.getElementById('btnFanApply');
+
+    if (!card) return;
+
+    card.classList.remove('loading');
+
+    if (!data || !data.available) {
+        statusBadge.className = 'badge offline';
+        statusBadge.textContent = 'Offline';
+        if (modeEl) modeEl.textContent = '--';
+        speedEl.textContent = '--%';
+        signalEl.textContent = '--';
+        errorEl.textContent = data?.error || 'ESP32 unavailable';
+        errorEl.style.display = 'block';
+        if (dayInput) dayInput.disabled = true;
+        if (nightInput) nightInput.disabled = true;
+        if (btnApply) btnApply.disabled = true;
+        return;
+    }
+
+    errorEl.style.display = 'none';
+
+    // Get humidity thresholds from backend
+    const humidityOnThreshold = data.humidity_on || 10;
+    const humidityOffThreshold = data.humidity_off || 5;
+
+    // Check humidity override with hysteresis
+    let shouldOverride = false;
+    if (dreoData && dreoData.available && dreoData.current_humidity && dreoData.target_humidity) {
+        const current = dreoData.current_humidity;
+        const target = dreoData.target_humidity;
+        const triggerLevel = target + humidityOnThreshold;
+        const releaseLevel = target + humidityOffThreshold;
+
+        if (humidityOverrideActive) {
+            // Currently overriding - stay on until humidity drops below release level
+            if (current < releaseLevel) {
+                humidityOverrideActive = false;
+                console.log(`[FAN] Humidity override OFF: ${current}% < ${releaseLevel}% (target+${humidityOffThreshold})`);
+            } else {
+                shouldOverride = true;
+            }
+        } else {
+            // Not overriding - trigger if humidity exceeds trigger level
+            if (current >= triggerLevel) {
+                humidityOverrideActive = true;
+                shouldOverride = true;
+                console.log(`[FAN] Humidity override ON: ${current}% >= ${triggerLevel}% (target+${humidityOnThreshold})`);
+                autoSetFanSpeed(100);
+            }
+        }
+    }
+
+    // Determine mode: control > day > night
+    const isDay = wizData && wizData.available && wizData.is_on;
+
+    if (shouldOverride) {
+        currentFanMode = 'control';
+    } else {
+        currentFanMode = isDay ? 'day' : 'night';
+    }
+
+    // Update mode display
+    if (modeEl) {
+        if (currentFanMode === 'control') {
+            modeEl.textContent = '⚡ Control';
+            modeEl.className = 'metric-value';
+        } else {
+            modeEl.textContent = isDay ? '☀️ Day' : '🌙 Night';
+            modeEl.className = 'metric-value';
+        }
+    }
+
+    // Update status badge
+    if (currentFanMode === 'control') {
+        statusBadge.className = 'badge control';
+        statusBadge.textContent = 'Control';
+    } else if (data.speed > 0) {
+        statusBadge.className = 'badge online';
+        statusBadge.textContent = currentFanMode === 'day' ? 'Day' : 'Night';
+    } else {
+        statusBadge.className = 'badge standby';
+        statusBadge.textContent = 'Idle';
+    }
+
+    // Update speed display
+    speedEl.textContent = `${data.speed}%`;
+    speedEl.className = data.speed > 0 ? 'metric-value on' : 'metric-value off';
+
+    // WiFi signal strength
+    if (data.rssi) {
+        const rssi = data.rssi;
+        let signalText = 'Weak';
+        if (rssi > -50) signalText = 'Excellent';
+        else if (rssi > -60) signalText = 'Good';
+        else if (rssi > -70) signalText = 'Fair';
+        signalEl.textContent = signalText;
+    } else {
+        signalEl.textContent = '--';
+    }
+
+    // Update inputs
+    if (dayInput && document.activeElement !== dayInput) {
+        dayInput.value = fanDaySpeed;
+        dayInput.disabled = false;
+    }
+    if (nightInput && document.activeElement !== nightInput) {
+        nightInput.value = fanNightSpeed;
+        nightInput.disabled = false;
+    }
+    if (btnApply) btnApply.disabled = false;
+
+    // Auto-switch speed when lights change (only if not in humidity override)
+    if (!shouldOverride && wizData && wizData.available) {
+        const isNowOn = wizData.is_on;
+        if (lastWizOn !== null && lastWizOn !== isNowOn) {
+            // Lights state changed - auto-switch fan speed
+            const targetSpeed = isNowOn ? fanDaySpeed : fanNightSpeed;
+            console.log(`[FAN] Auto-switching to ${isNowOn ? 'day' : 'night'} mode: ${targetSpeed}%`);
+            autoSetFanSpeed(targetSpeed);
+        }
+        lastWizOn = isNowOn;
+    }
+
+    // Return to normal speed when humidity override ends
+    if (!shouldOverride && humidityOverrideActive === false && currentFanMode !== 'control') {
+        // Just exited override - restore day/night speed
+    }
+}
+
+/**
+ * Show PIN modal for authentication
+ */
+function showPinModal(action) {
+    pendingFanAction = action;
+    const modal = document.getElementById('fanPinModal');
+    const input = document.getElementById('fanPinInput');
+    const errorEl = document.getElementById('fanPinError');
+
+    if (modal) {
+        modal.style.display = 'flex';
+        if (input) {
+            input.value = '';
+            input.focus();
+        }
+        if (errorEl) errorEl.style.display = 'none';
+    }
+}
+
+/**
+ * Execute pending fan action with PIN
+ */
+async function executeFanAction(pin) {
+    if (!pendingFanAction) return;
+
+    const errorEl = document.getElementById('fanPinError');
+
+    try {
+        let response;
+
+        if (pendingFanAction.type === 'speed') {
+            response = await fetch('/api/fan/speed', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ speed: pendingFanAction.data, code: pin })
+            });
+        } else if (pendingFanAction.type === 'schedule') {
+            response = await fetch('/api/fan/schedule', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ schedules: pendingFanAction.data, code: pin })
+            });
+        }
+
+        if (response && response.ok) {
+            fanAuthPin = pin;  // Cache PIN on success
+            closePinModal();
+
+            // Refresh status
+            if (socket) {
+                socket.emit('request_update');
+            }
+        } else if (response && response.status === 403) {
+            if (errorEl) {
+                errorEl.textContent = 'Invalid PIN';
+                errorEl.style.display = 'block';
+            }
+            fanAuthPin = null;  // Clear cached PIN
+        } else {
+            if (errorEl) {
+                errorEl.textContent = 'Connection error';
+                errorEl.style.display = 'block';
+            }
+        }
+    } catch (e) {
+        console.error('Fan action failed:', e);
+        if (errorEl) {
+            errorEl.textContent = 'Connection error';
+            errorEl.style.display = 'block';
+        }
+    }
+}
+
+function closePinModal() {
+    const modal = document.getElementById('fanPinModal');
+    if (modal) modal.style.display = 'none';
+    pendingFanAction = null;
+}
+
+/**
+ * Auto-set fan speed (used when lights change)
+ */
+async function autoSetFanSpeed(speed) {
+    if (!fanAuthPin) {
+        console.log('[FAN] No cached PIN, skipping auto-switch');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/fan/speed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ speed: speed, code: fanAuthPin })
+        });
+
+        if (response.ok) {
+            console.log(`[FAN] Auto-set speed to ${speed}%`);
+            if (socket) socket.emit('request_update');
+        }
+    } catch (e) {
+        console.error('[FAN] Auto-set failed:', e);
+    }
+}
+
+/**
+ * Save day/night settings and apply current mode speed
+ */
+function saveDayNightSettings() {
+    const dayInput = document.getElementById('fanDaySpeed');
+    const nightInput = document.getElementById('fanNightSpeed');
+
+    if (!dayInput || !nightInput) return;
+
+    const newDaySpeed = parseInt(dayInput.value, 10) || 75;
+    const newNightSpeed = parseInt(nightInput.value, 10) || 30;
+
+    fanDaySpeed = Math.max(0, Math.min(100, newDaySpeed));
+    fanNightSpeed = Math.max(0, Math.min(100, newNightSpeed));
+
+    // Save to localStorage
+    localStorage.setItem('fanDayNight', JSON.stringify({
+        day: fanDaySpeed,
+        night: fanNightSpeed
+    }));
+
+    // Apply current mode speed
+    const targetSpeed = currentFanMode === 'day' ? fanDaySpeed : fanNightSpeed;
+
+    if (fanAuthPin) {
+        pendingFanAction = { type: 'speed', data: targetSpeed };
+        executeFanAction(fanAuthPin);
+    } else {
+        showPinModal({ type: 'speed', data: targetSpeed });
+    }
+}
+
+/**
+ * Show schedule modal
+ */
+async function showScheduleModal() {
+    const modal = document.getElementById('fanScheduleModal');
+    const list = document.getElementById('scheduleList');
+
+    if (!modal || !list) return;
+
+    // Fetch latest schedules
+    try {
+        const response = await fetch('/api/fan/schedule');
+        if (response.ok) {
+            const data = await response.json();
+            fanSchedules = data.schedules || [];
+        }
+    } catch (e) {
+        console.error('Failed to fetch schedules:', e);
+    }
+
+    renderScheduleList();
+    modal.style.display = 'flex';
+}
+
+function renderScheduleList() {
+    const list = document.getElementById('scheduleList');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    fanSchedules.forEach((sched, i) => {
+        const item = document.createElement('div');
+        item.className = 'schedule-item';
+        item.innerHTML = `
+            <input type="checkbox" class="sched-enabled" ${sched.enabled ? 'checked' : ''} data-id="${i}">
+            <input type="time" class="sched-time" value="${String(sched.hour).padStart(2, '0')}:${String(sched.minute).padStart(2, '0')}" data-id="${i}">
+            <input type="number" class="sched-speed" min="0" max="100" value="${sched.speed}" data-id="${i}">
+            <span>%</span>
+            <button class="btn-remove" data-id="${i}">✕</button>
+        `;
+        list.appendChild(item);
+    });
+
+    // Add event listeners
+    list.querySelectorAll('.btn-remove').forEach(btn => {
+        btn.onclick = () => {
+            const id = parseInt(btn.dataset.id, 10);
+            fanSchedules.splice(id, 1);
+            renderScheduleList();
+        };
+    });
+}
+
+function addScheduleEntry() {
+    fanSchedules.push({ enabled: true, hour: 12, minute: 0, speed: 50, id: fanSchedules.length });
+    renderScheduleList();
+}
+
+function saveSchedules() {
+    const list = document.getElementById('scheduleList');
+    if (!list) return;
+
+    // Collect schedule data from form
+    const items = list.querySelectorAll('.schedule-item');
+    const schedules = [];
+
+    items.forEach((item, i) => {
+        const enabled = item.querySelector('.sched-enabled').checked;
+        const time = item.querySelector('.sched-time').value.split(':');
+        const speed = parseInt(item.querySelector('.sched-speed').value, 10);
+
+        schedules.push({
+            id: i,
+            enabled: enabled,
+            hour: parseInt(time[0], 10) || 0,
+            minute: parseInt(time[1], 10) || 0,
+            speed: speed || 0
+        });
+    });
+
+    if (fanAuthPin) {
+        // Use cached PIN
+        pendingFanAction = { type: 'schedule', data: schedules };
+        executeFanAction(fanAuthPin);
+        closeScheduleModal();
+    } else {
+        // Prompt for PIN
+        closeScheduleModal();
+        showPinModal({ type: 'schedule', data: schedules });
+    }
+}
+
+function closeScheduleModal() {
+    const modal = document.getElementById('fanScheduleModal');
+    if (modal) modal.style.display = 'none';
+}
+
+/**
+ * Initialize fan control events
+ */
+function initFanControls() {
+    // Save button (day/night settings)
+    const btnApply = document.getElementById('btnFanApply');
+    if (btnApply) {
+        btnApply.onclick = saveDayNightSettings;
+    }
+
+    // Schedule button
+    const btnSchedule = document.getElementById('btnFanSchedule');
+    if (btnSchedule) {
+        btnSchedule.onclick = showScheduleModal;
+    }
+
+    // PIN modal
+    const btnPinCancel = document.getElementById('btnPinCancel');
+    const btnPinSubmit = document.getElementById('btnPinSubmit');
+    const pinInput = document.getElementById('fanPinInput');
+
+    if (btnPinCancel) btnPinCancel.onclick = closePinModal;
+    if (btnPinSubmit) {
+        btnPinSubmit.onclick = () => {
+            if (pinInput && pinInput.value.length === 4) {
+                executeFanAction(pinInput.value);
+            }
+        };
+    }
+    if (pinInput) {
+        pinInput.onkeydown = (e) => {
+            if (e.key === 'Enter' && pinInput.value.length === 4) {
+                executeFanAction(pinInput.value);
+            }
+        };
+    }
+
+    // Schedule modal
+    const btnAddSchedule = document.getElementById('btnAddSchedule');
+    const btnScheduleCancel = document.getElementById('btnScheduleCancel');
+    const btnScheduleSave = document.getElementById('btnScheduleSave');
+
+    if (btnAddSchedule) btnAddSchedule.onclick = addScheduleEntry;
+    if (btnScheduleCancel) btnScheduleCancel.onclick = closeScheduleModal;
+    if (btnScheduleSave) btnScheduleSave.onclick = saveSchedules;
+
+    // Close modals on background click
+    const pinModal = document.getElementById('fanPinModal');
+    const schedModal = document.getElementById('fanScheduleModal');
+
+    if (pinModal) {
+        pinModal.onclick = (e) => {
+            if (e.target === pinModal) closePinModal();
+        };
+    }
+    if (schedModal) {
+        schedModal.onclick = (e) => {
+            if (e.target === schedModal) closeScheduleModal();
+        };
+    }
+}
+
+// Ensure fan controls are initialized when DOM is ready
+document.addEventListener('DOMContentLoaded', initFanControls);
+

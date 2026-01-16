@@ -215,6 +215,86 @@
                 <div class="card-error" id="tapoError" style="display: none;"></div>
             </div>
 
+            <!-- PWM Fan Control Card -->
+            <div class="card card-fan" id="fanCard">
+                <div class="card-header">
+                    <div class="card-icon">🌀</div>
+                    <div class="card-title">
+                        <h2>Ventilation Fan</h2>
+                        <span class="device-type">ESP32 PWM</span>
+                    </div>
+                    <div class="status-badge" id="fanStatus">
+                        <span class="badge offline">Offline</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="metric-grid fan-metrics">
+                        <div class="metric">
+                            <span class="metric-label">Mode</span>
+                            <span class="metric-value" id="fanMode">--</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Speed</span>
+                            <span class="metric-value" id="fanSpeed">--%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Signal</span>
+                            <span class="metric-value" id="fanSignal">--</span>
+                        </div>
+                    </div>
+                    <div class="fan-controls">
+                        <div class="day-night-controls">
+                            <div class="dn-control">
+                                <span class="dn-icon">☀️</span>
+                                <span class="dn-label">Day</span>
+                                <input type="number" id="fanDaySpeed" min="0" max="100" value="75" class="dn-input"
+                                    disabled>
+                                <span class="dn-unit">%</span>
+                            </div>
+                            <div class="dn-control">
+                                <span class="dn-icon">🌙</span>
+                                <span class="dn-label">Night</span>
+                                <input type="number" id="fanNightSpeed" min="0" max="100" value="30" class="dn-input"
+                                    disabled>
+                                <span class="dn-unit">%</span>
+                            </div>
+                        </div>
+                        <div class="fan-buttons">
+                            <button id="btnFanApply" class="btn-fan btn-primary" disabled>Save</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-error" id="fanError" style="display: none;"></div>
+            </div>
+
+            <!-- Fan PIN Modal -->
+            <div id="fanPinModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <h3>🔐 Enter PIN</h3>
+                    <p>Enter your 4-digit code to control the fan.</p>
+                    <input type="password" id="fanPinInput" maxlength="4" pattern="[0-9]*" inputmode="numeric"
+                        placeholder="••••" class="pin-input">
+                    <div id="fanPinError" class="pin-error" style="display: none;">Invalid PIN</div>
+                    <div class="modal-actions">
+                        <button id="btnPinCancel" class="btn-secondary">Cancel</button>
+                        <button id="btnPinSubmit" class="btn-primary">Confirm</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fan Schedule Modal -->
+            <div id="fanScheduleModal" class="modal" style="display: none;">
+                <div class="modal-content schedule-modal">
+                    <h3>📅 Fan Schedule</h3>
+                    <div id="scheduleList" class="schedule-list"></div>
+                    <button id="btnAddSchedule" class="btn-secondary">+ Add Entry</button>
+                    <div class="modal-actions">
+                        <button id="btnScheduleCancel" class="btn-secondary">Cancel</button>
+                        <button id="btnScheduleSave" class="btn-primary">Save</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Camera Card (Full Width) -->
             <div class="card card-camera" id="cameraCard">
                 <div class="card-header">

@@ -269,6 +269,27 @@ body::before {
     border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
+.badge.control {
+    background: rgba(168, 85, 247, 0.2);
+    color: var(--accent-purple);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    animation: pulse-purple 2s infinite;
+}
+
+@keyframes pulse-purple {
+    0% {
+        box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 6px transparent;
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 transparent;
+    }
+}
+
 /* Metric Grid */
 .metric-grid {
     display: grid;
@@ -856,5 +877,304 @@ body::before {
 
     100% {
         box-shadow: 0 0 0 0 transparent;
+    }
+}
+
+/* ============== FAN CARD ============== */
+.card-fan {
+    --card-accent: #06b6d4;
+    /* Cyan accent */
+}
+
+.fan-controls {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Day/Night Controls */
+.day-night-controls {
+    display: flex;
+    gap: 1rem;
+}
+
+.dn-control {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+}
+
+.dn-icon {
+    font-size: 1.25rem;
+}
+
+.dn-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    min-width: 35px;
+}
+
+.dn-input {
+    width: 55px;
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 1rem;
+    text-align: center;
+}
+
+.dn-input:focus {
+    outline: none;
+    border-color: #06b6d4;
+}
+
+.dn-input:disabled {
+    opacity: 0.5;
+}
+
+.dn-unit {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.fan-metrics {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.speed-slider-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.speed-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+}
+
+.speed-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 24px;
+    height: 24px;
+    background: linear-gradient(135deg, #06b6d4, #0891b2);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(6, 182, 212, 0.4);
+    transition: transform 0.2s;
+}
+
+.speed-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+}
+
+.speed-slider::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+    background: linear-gradient(135deg, #06b6d4, #0891b2);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 8px rgba(6, 182, 212, 0.4);
+}
+
+.speed-slider:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.speed-slider:disabled::-webkit-slider-thumb {
+    cursor: not-allowed;
+}
+
+.speed-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.fan-buttons {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.btn-fan {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-primary);
+}
+
+.btn-fan:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.btn-fan.btn-primary {
+    background: linear-gradient(135deg, #06b6d4, #0891b2);
+    border: none;
+    color: white;
+}
+
+.btn-fan.btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #0891b2, #0e7490);
+    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
+}
+
+.btn-fan:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* PIN Input Modal */
+.pin-input {
+    width: 100%;
+    padding: 1rem;
+    font-size: 2rem;
+    text-align: center;
+    letter-spacing: 0.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: monospace;
+}
+
+.pin-input:focus {
+    outline: none;
+    border-color: #06b6d4;
+    box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.2);
+}
+
+.pin-input::placeholder {
+    color: var(--text-muted);
+    letter-spacing: 0.25rem;
+}
+
+.pin-error {
+    text-align: center;
+    color: var(--accent-red);
+    font-size: 0.9rem;
+    padding: 0.5rem;
+    background: rgba(239, 68, 68, 0.1);
+    border-radius: var(--radius-sm);
+}
+
+/* Schedule Modal */
+.schedule-modal {
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.schedule-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.schedule-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+}
+
+.schedule-item input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    accent-color: #06b6d4;
+    cursor: pointer;
+}
+
+.schedule-item input[type="time"] {
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.schedule-item input[type="number"] {
+    width: 60px;
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.schedule-item input:focus {
+    outline: none;
+    border-color: #06b6d4;
+}
+
+.schedule-item span {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.schedule-item .btn-remove {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 50%;
+    color: var(--accent-red);
+    cursor: pointer;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    margin-left: auto;
+}
+
+.schedule-item .btn-remove:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* Mobile responsiveness for fan card */
+@media (max-width: 768px) {
+    .schedule-item {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .schedule-item input[type="time"],
+    .schedule-item input[type="number"] {
+        flex: 1;
+        min-width: 0;
     }
 }

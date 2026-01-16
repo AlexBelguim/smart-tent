@@ -17,7 +17,7 @@ load_dotenv()
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.devices import get_wiz_status, get_dreo_status, get_tapo_status
+from backend.devices import get_wiz_status, get_dreo_status, get_tapo_status, get_fan_status, get_fan_device
 from backend.runtime_stats import RuntimeTracker
 from backend.push_notifications import (
     get_public_key, add_subscription, remove_subscription, send_push_notification
@@ -91,7 +91,8 @@ def get_all_device_status():
         'devices': {
             'wiz': get_wiz_status(),
             'dreo': dreo_status,
-            'tapo': get_tapo_status()
+            'tapo': get_tapo_status(),
+            'fan': get_fan_status()
         }
     }
 
@@ -202,6 +203,81 @@ def get_tapo():
     """Get Tapo energy monitor status."""
     return jsonify(get_tapo_status())
 
+
+@app.route('/api/fan')
+def get_fan():
+    """Get PWM fan status."""
+    return jsonify(get_fan_status())
+
+
+@app.route('/api/fan/speed', methods=['POST'])
+def set_fan_speed():
+    """Set PWM fan speed (requires auth code)."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    
+    speed = data.get('speed')
+    code = data.get('code')
+    
+    if speed is None:
+        return jsonify({'error': 'Speed required'}), 400
+    if not code:
+        return jsonify({'error': 'Authentication code required'}), 401
+    
+    fan = get_fan_device()
+    result = fan.set_speed(speed, code)
+    
+    if result.get('success'):
+        return jsonify(result)
+    else:
+        status_code = 403 if 'Invalid' in result.get('error', '') else 500
+        return jsonify(result), status_code
+
+
+@app.route('/api/fan/schedule')
+def get_fan_schedule():
+    """Get fan schedule entries."""
+    fan = get_fan_device()
+    return jsonify(fan.get_schedule())
+
+
+@app.route('/api/fan/schedule', methods=['POST'])
+def set_fan_schedule():
+    """Set fan schedule entries (requires auth code)."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    
+    schedules = data.get('schedules')
+    code = data.get('code')
+    
+    if schedules is None:
+        return jsonify({'error': 'Schedules required'}), 400
+    if not code:
+        return jsonify({'error': 'Authentication code required'}), 401
+    
+    fan = get_fan_device()
+    result = fan.set_schedule(schedules, code)
+    
+    if result.get('success'):
+        return jsonify(result)
+    else:
+        status_code = 403 if 'Invalid' in result.get('error', '') else 500
+        return jsonify(result), status_code
+
+
+@app.route('/api/fan/auth', methods=['POST'])
+def verify_fan_auth():
+    """Verify authentication code for fan control."""
+    data = request.get_json()
+    if not data or not data.get('code'):
+        return jsonify({'valid': False}), 401
+    
+    fan = get_fan_device()
+    is_valid = fan.verify_auth(data['code'])
+    
+    return jsonify({'valid': is_valid}), 200 if is_valid else 403
 
 @app.route('/api/health')
 def health():
