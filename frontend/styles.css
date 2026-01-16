@@ -896,7 +896,8 @@ body::before {
 /* Day/Night Controls */
 .day-night-controls {
     display: flex;
-    gap: 1rem;
+    flex-direction: column;
+    gap: 0.75rem;
 }
 
 .dn-control {

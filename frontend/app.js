@@ -1012,35 +1012,9 @@ function updateFanCard(data, wizData, dreoData) {
     errorEl.style.display = 'none';
 
     // Get humidity thresholds from backend
-    const humidityOnThreshold = data.humidity_on || 10;
-    const humidityOffThreshold = data.humidity_off || 5;
-
-    // Check humidity override with hysteresis
-    let shouldOverride = false;
-    if (dreoData && dreoData.available && dreoData.current_humidity && dreoData.target_humidity) {
-        const current = dreoData.current_humidity;
-        const target = dreoData.target_humidity;
-        const triggerLevel = target + humidityOnThreshold;
-        const releaseLevel = target + humidityOffThreshold;
-
-        if (humidityOverrideActive) {
-            // Currently overriding - stay on until humidity drops below release level
-            if (current < releaseLevel) {
-                humidityOverrideActive = false;
-                console.log(`[FAN] Humidity override OFF: ${current}% < ${releaseLevel}% (target+${humidityOffThreshold})`);
-            } else {
-                shouldOverride = true;
-            }
-        } else {
-            // Not overriding - trigger if humidity exceeds trigger level
-            if (current >= triggerLevel) {
-                humidityOverrideActive = true;
-                shouldOverride = true;
-                console.log(`[FAN] Humidity override ON: ${current}% >= ${triggerLevel}% (target+${humidityOnThreshold})`);
-                autoSetFanSpeed(100);
-            }
-        }
-    }
+    // Get humidity override state from backend (backend handles hysteresis logic)
+    const shouldOverride = data.humidity_override === true;
+    humidityOverrideActive = shouldOverride;
 
     // Determine mode: control > day > night
     const isDay = wizData && wizData.available && wizData.is_on;

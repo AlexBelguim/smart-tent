@@ -44,6 +44,9 @@ last_water_notification_time = 0
 POWER_THRESHOLD = 200  # Watts
 RTSP_URL = "rtsp://192.168.1.246:554/Streaming/Channels/101"
 
+# Humidity override state
+humidity_override_active = False
+
 
 
 def gen_frames_ffmpeg():
@@ -114,6 +117,9 @@ def background_update_thread():
             # Check for push notification triggers
             check_push_notifications(status)
             
+            # Check humidity override for fan control
+            check_humidity_override(status)
+            
             # Save periodically (e.g., every 60s)
             if time.time() - last_save_time > 60:
                 runtime_tracker.save()
@@ -172,6 +178,54 @@ def check_push_notifications(status):
             except Exception as e:
                 pass  # Push failed, continue silently
             last_water_notification_time = now
+
+
+def check_humidity_override(status):
+    """Check humidity levels and auto-set fan to 100% if too high (with hysteresis)."""
+    global humidity_override_active
+    
+    devices = status.get('devices', {})
+    dreo = devices.get('dreo', {})
+    fan = devices.get('fan', {})
+    
+    if not dreo.get('available') or not fan.get('available'):
+        return
+    
+    current = dreo.get('current_humidity')
+    target = dreo.get('target_humidity')
+    
+    if current is None or target is None:
+        return
+    
+    # Get thresholds from env
+    on_threshold = int(os.getenv('FAN_HUMIDITY_ON', 10))
+    off_threshold = int(os.getenv('FAN_HUMIDITY_OFF', 5))
+    
+    trigger_level = target + on_threshold
+    release_level = target + off_threshold
+    
+    fan_device = get_fan_device()
+    
+    if humidity_override_active:
+        # Currently overriding - check if we should turn off
+        if current < release_level:
+            humidity_override_active = False
+            print(f"[FAN] Humidity override OFF: {current}% < {release_level}%")
+            # Note: Don't auto-set speed here, let user's day/night settings take over
+    else:
+        # Not overriding - check if we should trigger
+        if current >= trigger_level:
+            humidity_override_active = True
+            print(f"[FAN] Humidity override ON: {current}% >= {trigger_level}% -> Setting fan to 100%")
+            # Use the PIN from .env to set fan to 100%
+            result = fan_device.set_speed(100)
+            if result.get('success'):
+                print("[FAN] Successfully set to 100%")
+            else:
+                print(f"[FAN] Failed to set speed: {result.get('error')}")
+    
+    # Add override state to fan status for frontend
+    status['devices']['fan']['humidity_override'] = humidity_override_active
 
 
 @app.route('/')
