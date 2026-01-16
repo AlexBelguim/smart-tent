@@ -216,9 +216,10 @@ def check_humidity_override(status):
             wiz = devices.get('wiz', {})
             is_day = wiz.get('available') and wiz.get('is_on')
             
-            # Get day/night speeds from fan status (sent by frontend) or use defaults
-            day_speed = int(os.getenv('FAN_DAY_SPEED', 75))
-            night_speed = int(os.getenv('FAN_NIGHT_SPEED', 30))
+            # Get day/night speeds from synced settings file
+            settings = load_fan_settings()
+            day_speed = settings.get('day', 75)
+            night_speed = settings.get('night', 30)
             
             target_speed = day_speed if is_day else night_speed
             mode_name = 'day' if is_day else 'night'
@@ -304,6 +305,53 @@ def set_fan_speed():
     else:
         status_code = 403 if 'Invalid' in result.get('error', '') else 500
         return jsonify(result), status_code
+
+
+# Fan settings storage file
+FAN_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), 'fan_settings.json')
+
+def load_fan_settings():
+    """Load fan day/night settings from file."""
+    try:
+        if os.path.exists(FAN_SETTINGS_FILE):
+            with open(FAN_SETTINGS_FILE, 'r') as f:
+                import json
+                return json.load(f)
+    except Exception as e:
+        print(f"[FAN] Failed to load settings: {e}")
+    return {'day': 75, 'night': 30}
+
+def save_fan_settings(day_speed, night_speed):
+    """Save fan day/night settings to file."""
+    try:
+        import json
+        with open(FAN_SETTINGS_FILE, 'w') as f:
+            json.dump({'day': day_speed, 'night': night_speed}, f)
+        return True
+    except Exception as e:
+        print(f"[FAN] Failed to save settings: {e}")
+        return False
+
+@app.route('/api/fan/settings')
+def get_fan_settings():
+    """Get fan day/night settings."""
+    return jsonify(load_fan_settings())
+
+@app.route('/api/fan/settings', methods=['POST'])
+def set_fan_settings():
+    """Save fan day/night settings."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    
+    day_speed = data.get('day', 75)
+    night_speed = data.get('night', 30)
+    
+    if save_fan_settings(day_speed, night_speed):
+        print(f"[FAN] Settings saved: day={day_speed}%, night={night_speed}%")
+        return jsonify({'success': True, 'day': day_speed, 'night': night_speed})
+    else:
+        return jsonify({'error': 'Failed to save settings'}), 500
 
 
 @app.route('/api/fan/schedule')

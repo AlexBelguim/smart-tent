@@ -1200,7 +1200,7 @@ async function autoSetFanSpeed(speed) {
 /**
  * Save day/night settings and apply current mode speed
  */
-function saveDayNightSettings() {
+async function saveDayNightSettings() {
     const dayInput = document.getElementById('fanDaySpeed');
     const nightInput = document.getElementById('fanNightSpeed');
 
@@ -1212,11 +1212,23 @@ function saveDayNightSettings() {
     fanDaySpeed = Math.max(0, Math.min(100, newDaySpeed));
     fanNightSpeed = Math.max(0, Math.min(100, newNightSpeed));
 
-    // Save to localStorage
+    // Save to localStorage (for UI persistence)
     localStorage.setItem('fanDayNight', JSON.stringify({
         day: fanDaySpeed,
         night: fanNightSpeed
     }));
+
+    // Sync to backend (for humidity override restore)
+    try {
+        await fetch('/api/fan/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ day: fanDaySpeed, night: fanNightSpeed })
+        });
+        console.log('[FAN] Settings synced to backend');
+    } catch (e) {
+        console.error('[FAN] Failed to sync settings to backend:', e);
+    }
 
     // Apply current mode speed
     const targetSpeed = currentFanMode === 'day' ? fanDaySpeed : fanNightSpeed;

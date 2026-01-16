@@ -27,3 +27,4 @@ Thumbs.db
 # Data directory (VAPID keys, subscriptions)
 data/
 runtime_history.json
+backend/fan_settings.json
