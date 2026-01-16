@@ -117,8 +117,8 @@ def background_update_thread():
             # Check for push notification triggers
             check_push_notifications(status)
             
-            # Check humidity override for fan control
-            check_humidity_override(status)
+            # Check humidity override and enforce fan speed
+            check_fan_control(status)
             
             # Save periodically (e.g., every 60s)
             if time.time() - last_save_time > 60:
@@ -180,70 +180,78 @@ def check_push_notifications(status):
             last_water_notification_time = now
 
 
-def check_humidity_override(status):
-    """Check humidity levels and auto-set fan to 100% if too high (with hysteresis)."""
+def check_fan_control(status):
+    """Check humidity and grow lights to strictly enforce fan speed."""
     global humidity_override_active
     
     devices = status.get('devices', {})
     dreo = devices.get('dreo', {})
     fan = devices.get('fan', {})
+    wiz = devices.get('wiz', {})
     
-    if not dreo.get('available') or not fan.get('available'):
+    if not fan.get('available'):
         return
-    
-    current = dreo.get('current_humidity')
-    target = dreo.get('target_humidity')
-    
-    if current is None or target is None:
-        return
-    
-    # Get thresholds from env
-    on_threshold = int(os.getenv('FAN_HUMIDITY_ON', 10))
-    off_threshold = int(os.getenv('FAN_HUMIDITY_OFF', 5))
-    
-    trigger_level = target + on_threshold
-    release_level = target + off_threshold
     
     fan_device = get_fan_device()
+    current_speed = fan.get('speed')
     
-    if humidity_override_active:
-        # Currently overriding - check if we should turn off
-        if current < release_level:
-            humidity_override_active = False
-            print(f"[FAN] Humidity override OFF: {current}% < {release_level}%")
-            
-            # Restore correct day/night speed based on grow light state
-            wiz = devices.get('wiz', {})
-            is_day = wiz.get('available') and wiz.get('is_on')
-            
-            # Get day/night speeds from synced settings file
-            settings = load_fan_settings()
-            day_speed = settings.get('day', 75)
-            night_speed = settings.get('night', 30)
-            
-            target_speed = day_speed if is_day else night_speed
-            mode_name = 'day' if is_day else 'night'
-            
-            print(f"[FAN] Restoring {mode_name} mode speed: {target_speed}%")
-            result = fan_device.set_speed(target_speed)
-            if result.get('success'):
-                print(f"[FAN] Successfully restored to {target_speed}%")
-            else:
-                print(f"[FAN] Failed to restore speed: {result.get('error')}")
-    else:
-        # Not overriding - check if we should trigger
-        if current >= trigger_level:
-            humidity_override_active = True
-            print(f"[FAN] Humidity override ON: {current}% >= {trigger_level}% -> Setting fan to 100%")
-            # Use the PIN from .env to set fan to 100%
-            result = fan_device.set_speed(100)
-            if result.get('success'):
-                print("[FAN] Successfully set to 100%")
-            else:
-                print(f"[FAN] Failed to set speed: {result.get('error')}")
+    # ---------------------------------------------------------
+    # 1. Humidity Override Check (Highest Priority)
+    # ---------------------------------------------------------
+    should_override = humidity_override_active
     
-    # Add override state to fan status for frontend
+    if dreo.get('available') and dreo.get('current_humidity') is not None and dreo.get('target_humidity') is not None:
+        current_humidity = dreo.get('current_humidity')
+        target_humidity = dreo.get('target_humidity')
+        
+        # Get thresholds from env
+        on_threshold = int(os.getenv('FAN_HUMIDITY_ON', 10))
+        off_threshold = int(os.getenv('FAN_HUMIDITY_OFF', 5))
+        
+        trigger_level = target_humidity + on_threshold
+        release_level = target_humidity + off_threshold
+        
+        if humidity_override_active:
+            # Check if we should exit override
+            if current_humidity < release_level:
+                humidity_override_active = False
+                should_override = False
+                print(f"[FAN] Humidity override OFF: {current_humidity}% < {release_level}%")
+        else:
+            # Check if we should enter override
+            if current_humidity >= trigger_level:
+                humidity_override_active = True
+                should_override = True
+                print(f"[FAN] Humidity override ON: {current_humidity}% >= {trigger_level}%")
+    
+    # Update status for frontend
     status['devices']['fan']['humidity_override'] = humidity_override_active
+    
+    # ---------------------------------------------------------
+    # 2. Enforce Speed
+    # ---------------------------------------------------------
+    target_speed = None
+    reason = ""
+    
+    if should_override:
+        target_speed = 100
+        reason = "Humidity Override"
+    else:
+        # Determine Day/Night speed
+        is_day = wiz.get('available') and wiz.get('is_on')
+        settings = load_fan_settings()
+        day_speed = settings.get('day', 75)
+        night_speed = settings.get('night', 30)
+        
+        target_speed = day_speed if is_day else night_speed
+        reason = f"{'Day' if is_day else 'Night'} Mode"
+    
+    # Only set speed if different (and speed is known)
+    if current_speed is not None and target_speed is not None:
+        if current_speed != target_speed:
+            print(f"[FAN] Enforcing {reason}: {current_speed}% -> {target_speed}%")
+            fan_device.set_speed(target_speed)
+        # Else: Speed is already correct, do nothing
 
 
 @app.route('/')

@@ -174,8 +174,8 @@ function updateWizCard(data) {
         powerEl.textContent = 'ON';
         powerEl.className = 'metric-value on';
     } else {
-        statusBadge.className = 'badge standby';
-        statusBadge.textContent = 'Standby';
+        statusBadge.className = 'badge offline';
+        statusBadge.textContent = 'Off';
         powerEl.textContent = 'OFF';
         powerEl.className = 'metric-value off';
     }
@@ -1084,16 +1084,10 @@ function updateFanCard(data, wizData, dreoData) {
     }
     if (btnApply) btnApply.disabled = false;
 
-    // Auto-switch speed when lights change (only if not in humidity override)
-    if (!shouldOverride && wizData && wizData.available) {
-        const isNowOn = wizData.is_on;
-        if (lastWizOn !== null && lastWizOn !== isNowOn) {
-            // Lights state changed - auto-switch fan speed
-            const targetSpeed = isNowOn ? fanDaySpeed : fanNightSpeed;
-            console.log(`[FAN] Auto-switching to ${isNowOn ? 'day' : 'night'} mode: ${targetSpeed}%`);
-            autoSetFanSpeed(targetSpeed);
-        }
-        lastWizOn = isNowOn;
+    // Auto-switch is now handled by backend (app.py check_fan_control)
+    // We just track lastWizOn for UI purposes if needed, or remove it.
+    if (wizData && wizData.available) {
+        lastWizOn = wizData.is_on;
     }
 
     // Return to normal speed when humidity override ends
