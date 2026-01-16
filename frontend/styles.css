@@ -949,6 +949,13 @@ body::before {
     grid-template-columns: repeat(3, 1fr);
 }
 
+/* Mobile: stack day/night controls vertically */
+@media (max-width: 768px) {
+    .day-night-controls {
+        flex-direction: column;
+    }
+}
+
 .speed-slider-container {
     display: flex;
     flex-direction: column;
