@@ -772,11 +772,19 @@ function init() {
  */
 function initTileInteractions() {
     const tapoTodayCostTile = document.getElementById('tapoTodayCostTile');
+    const tapoTodayTile = document.getElementById('tapoTodayTile');
     const dreoDayTile = document.getElementById('dreoDayTile');
     const dreoWeekTile = document.getElementById('dreoWeekTile');
 
     if (tapoTodayCostTile) {
         tapoTodayCostTile.onclick = () => {
+            const currency = currentTapoData?.currency || '€';
+            showEnergyHistory(currentTapoData?.history_7d, currency);
+        };
+    }
+
+    if (tapoTodayTile) {
+        tapoTodayTile.onclick = () => {
             const currency = currentTapoData?.currency || '€';
             showEnergyHistory(currentTapoData?.history_7d, currency);
         };
@@ -923,22 +931,32 @@ function showEnergyHistory(history, currency) {
 /**
  * Show Humidifier History Modal
  */
-function showHumidifierHistory(history) {
+function showHumidifierHistory(history, titleOverride) {
     const modal = document.getElementById('humidifierHistoryModal');
     const list = document.getElementById('humidifierHistoryList');
     const closeBtn = document.getElementById('btnHumidifierHistoryClose');
+    const titleEl = modal?.querySelector('h3');
 
     if (!modal || !list) return;
+
+    if (titleEl) {
+        titleEl.textContent = titleOverride || "Last 7 Days Runtime";
+    }
 
     if (!history || history.length === 0) {
         list.innerHTML = '<p style="text-align: center; color: var(--text-muted);">No history data available.</p>';
     } else {
-        let html = '<table class="history-table"><thead><tr><th>Date</th><th>On Time</th></tr></thead><tbody>';
+        let html = '<table class="history-table"><thead><tr><th>Period</th><th>On Time</th></tr></thead><tbody>';
 
         history.forEach(item => {
+            let label = item.label;
+            if (!label && item.date) {
+                label = new Date(item.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+            }
+
             html += `
                 <tr>
-                    <td>${new Date(item.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</td>
+                    <td>${label}</td>
                     <td>
                         <div style="font-weight: 600;">${item.percent}%</div>
                          <div class="history-bar-container">

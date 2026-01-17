@@ -129,8 +129,69 @@ class RuntimeTracker:
             'day': round(day_pct, 1),
             'week': round(week_pct, 1),
             'all_time': round(all_time_pct, 1),
-            'history_7d': self.get_daily_history()
+            'history_7d': self.get_daily_history(),
+            'history_7w': self.get_weekly_history()
         }
+
+    def get_weekly_history(self, weeks=7):
+        """Calculate runtime percentage for the last N weeks."""
+        history_data = []
+        now = datetime.now()
+        # Align to start of current week (Monday) or just rolling 7-day windows?
+        # Rolling 7-day windows preferred for "Last 7 Weeks"
+        
+        # Buckets for each week
+        buckets = {} # index -> {on: 0, total: 0, label: str}
+        
+        for i in range(weeks):
+            # Week 0 is "Current Week" (last 7 days including today)
+            # Week 1 is "Last Week" (days 7-13 ago)
+            end_date = now - timedelta(days=i*7)
+            start_date = end_date - timedelta(days=6) # 7 day window
+            
+            label = f"W{i}" # placeholder
+            # Better label: Start Date
+            label = start_date.strftime("%b %d")
+            
+            buckets[i] = {
+                'on': 0, 
+                'total': 0, 
+                'start_ts': start_date.timestamp(),
+                'end_ts': end_date.timestamp() + 86399, # End of day
+                'label': label
+            }
+
+        # Iterate history once
+        cutoff = buckets[weeks-1]['start_ts']
+        
+        for ts, state in self.history:
+            if ts < cutoff:
+                continue
+                
+            # Find which bucket this sample belongs to
+            # Optimization: could calculate index directly?
+            # index = floor((now_ts - ts) / (7*24*3600))
+            
+            diff = now.timestamp() - ts
+            if diff < 0: continue 
+            
+            idx = int(diff // (7 * 24 * 3600))
+            
+            if idx in buckets:
+                buckets[idx]['total'] += 1
+                if state:
+                    buckets[idx]['on'] += 1
+
+        # Convert to list (reverse order: oldest to newest)
+        for i in range(weeks - 1, -1, -1):
+            b = buckets[i]
+            pct = (b['on'] / b['total'] * 100) if b['total'] > 0 else 0
+            history_data.append({
+                'label': b['label'],
+                'percent': round(pct, 1)
+            })
+            
+        return history_data
 
     def get_daily_history(self, days=7):
         """Calculate runtime percentage for the last N days."""
