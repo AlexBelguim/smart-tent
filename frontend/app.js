@@ -779,14 +779,14 @@ function initTileInteractions() {
     if (tapoTodayCostTile) {
         tapoTodayCostTile.onclick = () => {
             const currency = currentTapoData?.currency || '€';
-            showEnergyHistory(currentTapoData?.history_7d, currency);
+            showEnergyHistory(currentTapoData?.history_7d, currency, 'cost');
         };
     }
 
     if (tapoTodayTile) {
         tapoTodayTile.onclick = () => {
             const currency = currentTapoData?.currency || '€';
-            showEnergyHistory(currentTapoData?.history_7d, currency);
+            showEnergyHistory(currentTapoData?.history_7d, currency, 'energy');
         };
     }
 
@@ -798,8 +798,7 @@ function initTileInteractions() {
 
     if (dreoWeekTile) {
         dreoWeekTile.onclick = () => {
-            // Both day and week tiles show the same 7-day history for now
-            showHumidifierHistory(currentDreoData?.runtime_stats?.history_7d);
+            showHumidifierHistory(currentDreoData?.runtime_stats?.history_7w, "Last 7 Weeks Runtime");
         };
     }
 }
@@ -886,27 +885,50 @@ function initCameraCard() {
 /**
  * Show Energy History Modal
  */
-function showEnergyHistory(history, currency) {
+function showEnergyHistory(history, currency, mode = 'cost') {
     const modal = document.getElementById('energyHistoryModal');
     const list = document.getElementById('energyHistoryList');
     const closeBtn = document.getElementById('btnEnergyHistoryClose');
+    const titleEl = modal?.querySelector('h3');
 
     if (!modal || !list) return;
+
+    // Set title based on mode
+    if (titleEl) {
+        titleEl.textContent = mode === 'cost' ? 'Last 7 Days Cost' : 'Last 7 Days Energy';
+    }
 
     if (!history || history.length === 0) {
         list.innerHTML = '<p style="text-align: center; color: var(--text-muted);">No history data available.</p>';
     } else {
-        let html = '<table class="history-table"><thead><tr><th>Date</th><th>Energy</th><th>Cost</th></tr></thead><tbody>';
+        const headerValue = mode === 'cost' ? 'Cost' : 'Energy';
+        let html = `<table class="history-table"><thead><tr><th>Date</th><th>${headerValue}</th></tr></thead><tbody>`;
 
         history.forEach(item => {
+            const displayValue = mode === 'cost'
+                ? `<div style="font-weight: 600;">${currency} ${item.cost.toFixed(2)}</div>`
+                : `<div style="font-weight: 600;">${item.kwh.toFixed(3)} kWh</div>`;
+
+            // Calculate bar width (arbitrary scaling for visualization)
+            // Cost: max ~2.0, Energy: max ~10.0 ?? depends on user
+            // Let's use relative scaling if possible? No, absolute for now.
+            // Cost: width = price / 2 * 100
+            // Energy: width = kwh / 5 * 100 (assuming 5kwh max/day)
+
+            let percent = 0;
+            if (mode === 'cost') {
+                percent = Math.min((item.cost / 2.0) * 100, 100);
+            } else {
+                percent = Math.min((item.kwh / 5.0) * 100, 100);
+            }
+
             html += `
                 <tr>
                     <td>${new Date(item.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</td>
-                    <td>${item.kwh.toFixed(3)} kWh</td>
                     <td>
-                        <div style="font-weight: 600;">${currency} ${item.cost.toFixed(2)}</div>
+                        ${displayValue}
                         <div class="history-bar-container">
-                            <div class="history-bar" style="width: ${Math.min((item.cost / 2.0) * 100, 100)}%; opacity: 0.7;"></div>
+                            <div class="history-bar" style="width: ${percent}%; opacity: 0.7;"></div>
                         </div>
                     </td>
                 </tr>

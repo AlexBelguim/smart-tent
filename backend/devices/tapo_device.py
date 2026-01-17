@@ -175,6 +175,20 @@ class TapoDevice:
             # Debug output (concise)
             # print(f"[TAPO] Power: {current_power_w}W | Today: {today_kwh:.2f}kWh | Month: {month_kwh:.2f}kWh | Year: {year_kwh:.2f}kWh")
             
+            # Get history
+            history_7d = await self.get_daily_history(kwh_price)
+            
+            # Inject "Today" if missing from history (using live data)
+            today_str = date.today().isoformat()
+            if not any(item['date'] == today_str for item in history_7d):
+                history_7d.append({
+                    'date': today_str,
+                    'kwh': round(today_kwh, 3),
+                    'cost': round(today_kwh * kwh_price, 2)
+                })
+                # Re-sort just in case
+                history_7d.sort(key=lambda x: x['date'])
+
             return {
                 'available': True,
                 'device': 'Tapo Energy Monitor',
@@ -192,7 +206,7 @@ class TapoDevice:
                 'kwh_price': kwh_price,
                 'currency': currency,
                 'today_cost': today_kwh * kwh_price,
-                'history_7d': await self.get_daily_history(kwh_price)
+                'history_7d': history_7d
             }
             
         except Exception as e:
