@@ -160,7 +160,9 @@ class TapoDevice:
                 'month_cost': month_cost,
                 'year_cost': year_cost,
                 'kwh_price': kwh_price,
-                'currency': currency
+                'currency': currency,
+                'today_cost': today_kwh * kwh_price,
+                'history_7d': await self.get_daily_history(kwh_price)
             }
             
         except Exception as e:
@@ -173,6 +175,64 @@ class TapoDevice:
                 'error': f'[TAPO] {error_msg}',
                 'ip': self.ip
             }
+
+    async def get_daily_history(self, kwh_price):
+        """Fetch last 7 days of energy data."""
+        try:
+            client = ApiClient(self.email, self.password)
+            device = await client.p110(self.ip)
+            
+            end_date = date.today()
+            start_date = end_date - relativedelta(days=6) # 7 days inclusive
+            
+            # Fetch Daily data
+            # Note: library might return different structure for Daily
+            # We use try/except to handle potential API differences
+            try:
+                result = await device.get_energy_data(EnergyDataInterval.Daily, start_date)
+            except Exception:
+                # Fallback or older version
+                return []
+                
+            history = []
+            
+            # Helper to extract data from entry
+            def get_entry_data(entry):
+                # Try to_dict first
+                if hasattr(entry, 'to_dict'):
+                    d = entry.to_dict()
+                    return d.get('local_date'), d.get('energy')
+                # Attributes
+                dt = getattr(entry, 'local_date', None) or getattr(entry, 'date', None)
+                en = getattr(entry, 'energy', 0)
+                return dt, en
+
+            entries = getattr(result, 'entries', [])
+            # specific fix for the library version if 'data' is used
+            if not entries and hasattr(result, 'data'):
+                entries = result.data
+
+            for entry in entries:
+                dt, energy_wh = get_entry_data(entry)
+                if dt:
+                    # Format date as YYYY-MM-DD
+                    date_str = dt.isoformat() if hasattr(dt, 'isoformat') else str(dt)
+                    kwh = energy_wh / 1000
+                    history.append({
+                        'date': date_str,
+                        'kwh': round(kwh, 3),
+                        'cost': round(kwh * kwh_price, 2)
+                    })
+            
+            # Ensure we have entries for all days? 
+            # The API usually returns what it has.
+            # Sort by date
+            history.sort(key=lambda x: x['date'])
+            return history
+            
+        except Exception as e:
+            print(f"[TAPO] History fetch failed: {e}")
+            return []
 
 
 # Singleton instance for uptime tracking

@@ -202,6 +202,10 @@
                             <span class="metric-label">Month Cost</span>
                             <span class="metric-value" id="tapoMonthCost">€ --</span>
                         </div>
+                        <div class="metric metric-interactive" id="tapoTodayCostTile">
+                            <span class="metric-label">Today Cost 👆</span>
+                            <span class="metric-value" id="tapoTodayCost">€ --</span>
+                        </div>
                         <div class="metric">
                             <span class="metric-label">Year (12mo)</span>
                             <span class="metric-value" id="tapoYear">-- kWh</span>
@@ -291,6 +295,28 @@
                     <div class="modal-actions">
                         <button id="btnScheduleCancel" class="btn-secondary">Cancel</button>
                         <button id="btnScheduleSave" class="btn-primary">Save</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Energy History Modal -->
+            <div id="energyHistoryModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <h3>⚡ Last 7 Days Cost</h3>
+                    <div id="energyHistoryList" class="history-list"></div>
+                    <div class="modal-actions">
+                        <button id="btnEnergyHistoryClose" class="btn-primary">Close</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Humidifier History Modal -->
+            <div id="humidifierHistoryModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <h3>💨 Last 7 Days Runtime</h3>
+                    <div id="humidifierHistoryList" class="history-list"></div>
+                    <div class="modal-actions">
+                        <button id="btnHumidifierHistoryClose" class="btn-primary">Close</button>
                     </div>
                 </div>
             </div>

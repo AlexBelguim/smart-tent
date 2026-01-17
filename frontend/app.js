@@ -200,6 +200,21 @@ function updateDreoCard(data) {
     const errorEl = document.getElementById('dreoError');
     const card = document.getElementById('dreoCard');
 
+    // Make tiles interactive
+    if (dayEl) {
+        dayEl.parentElement.classList.add('metric-interactive');
+        dayEl.parentElement.onclick = () => showHumidifierHistory(data.runtime_stats?.history_7d);
+        // Add pointer hint to label
+        const label = dayEl.parentElement.querySelector('.metric-label');
+        if (label && !label.textContent.includes('👆')) label.textContent += ' 👆';
+    }
+    if (weekEl) {
+        weekEl.parentElement.classList.add('metric-interactive');
+        weekEl.parentElement.onclick = () => showHumidifierHistory(data.runtime_stats?.history_7d);
+        const label = weekEl.parentElement.querySelector('.metric-label');
+        if (label && !label.textContent.includes('👆')) label.textContent += ' 👆';
+    }
+
     card.classList.remove('loading');
 
     if (!data.available) {
@@ -606,6 +621,8 @@ function updateTapoCard(data) {
     const todayEl = document.getElementById('tapoToday');
     const monthEl = document.getElementById('tapoMonth');
     const monthCostEl = document.getElementById('tapoMonthCost');
+    const todayCostEl = document.getElementById('tapoTodayCost');
+    const todayCostTile = document.getElementById('tapoTodayCostTile');
     const yearEl = document.getElementById('tapoYear');
     const yearCostEl = document.getElementById('tapoYearCost');
     const errorEl = document.getElementById('tapoError');
@@ -621,6 +638,7 @@ function updateTapoCard(data) {
         powerEl.textContent = '-- W';
         todayEl.textContent = '-- kWh';
         monthEl.textContent = '-- kWh';
+        if (todayCostEl) todayCostEl.textContent = `${currency} --`;
         monthCostEl.textContent = `${currency} --`;
         if (yearEl) yearEl.textContent = '-- kWh';
         yearCostEl.textContent = `${currency} --`;
@@ -653,6 +671,12 @@ function updateTapoCard(data) {
     // Cost calculations
     monthCostEl.textContent = data.month_cost !== undefined ? `${currency} ${data.month_cost.toFixed(2)}` : `${currency} --`;
     yearCostEl.textContent = data.year_cost !== undefined ? `${currency} ${data.year_cost.toFixed(2)}` : `${currency} --`;
+    if (todayCostEl) todayCostEl.textContent = data.today_cost !== undefined ? `${currency} ${data.today_cost.toFixed(2)}` : `${currency} --`;
+
+    // History interaction
+    if (todayCostTile) {
+        todayCostTile.onclick = () => showEnergyHistory(data.history_7d, currency);
+    }
 
     // Check for power notifications
     checkPowerNotification(data);
@@ -798,17 +822,16 @@ function initCameraCard() {
 
     // click handler
     container.addEventListener('click', (e) => {
-        // Prevent double firing if localized
-        e.stopPropagation();
-        toggleStream();
+        if (e.target.tagName !== 'BUTTON') {
+            toggleStream();
+        }
     });
 
-    // Also listen on the button specifically in case of propagation issues
-    const btn = container.querySelector('.btn-play');
-    if (btn) {
-        btn.addEventListener('click', (e) => {
+    const btnPlay = container.querySelector('.btn-play');
+    if (btnPlay) {
+        btnPlay.addEventListener('click', (e) => {
             e.stopPropagation();
-            toggleStream();
+            startStream();
         });
     }
 
@@ -828,6 +851,94 @@ function initCameraCard() {
             if (loading) loading.style.display = 'none';
         }
     });
+}
+
+/**
+ * Show Energy History Modal
+ */
+function showEnergyHistory(history, currency) {
+    const modal = document.getElementById('energyHistoryModal');
+    const list = document.getElementById('energyHistoryList');
+    const closeBtn = document.getElementById('btnEnergyHistoryClose');
+
+    if (!modal || !list) return;
+
+    if (!history || history.length === 0) {
+        list.innerHTML = '<p style="text-align: center; color: var(--text-muted);">No history data available.</p>';
+    } else {
+        let html = '<table class="history-table"><thead><tr><th>Date</th><th>Energy</th><th>Cost</th></tr></thead><tbody>';
+
+        history.forEach(item => {
+            html += `
+                <tr>
+                    <td>${new Date(item.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</td>
+                    <td>${item.kwh.toFixed(3)} kWh</td>
+                    <td>
+                        <div style="font-weight: 600;">${currency} ${item.cost.toFixed(2)}</div>
+                        <div class="history-bar-container">
+                            <div class="history-bar" style="width: ${Math.min((item.cost / 2.0) * 100, 100)}%; opacity: 0.7;"></div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+        html += '</tbody></table>';
+        list.innerHTML = html;
+    }
+
+    modal.style.display = 'flex';
+
+    closeBtn.onclick = () => {
+        modal.style.display = 'none';
+    };
+
+    // Clicking outside closes
+    modal.onclick = (e) => {
+        if (e.target === modal) modal.style.display = 'none';
+    };
+}
+
+/**
+ * Show Humidifier History Modal
+ */
+function showHumidifierHistory(history) {
+    const modal = document.getElementById('humidifierHistoryModal');
+    const list = document.getElementById('humidifierHistoryList');
+    const closeBtn = document.getElementById('btnHumidifierHistoryClose');
+
+    if (!modal || !list) return;
+
+    if (!history || history.length === 0) {
+        list.innerHTML = '<p style="text-align: center; color: var(--text-muted);">No history data available.</p>';
+    } else {
+        let html = '<table class="history-table"><thead><tr><th>Date</th><th>On Time</th></tr></thead><tbody>';
+
+        history.forEach(item => {
+            html += `
+                <tr>
+                    <td>${new Date(item.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</td>
+                    <td>
+                        <div style="font-weight: 600;">${item.percent}%</div>
+                         <div class="history-bar-container">
+                            <div class="history-bar" style="width: ${item.percent}%; background-color: var(--accent-blue);"></div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+        html += '</tbody></table>';
+        list.innerHTML = html;
+    }
+
+    modal.style.display = 'flex';
+
+    closeBtn.onclick = () => {
+        modal.style.display = 'none';
+    };
+
+    modal.onclick = (e) => {
+        if (e.target === modal) modal.style.display = 'none';
+    };
 }
 
 /**
@@ -1399,4 +1510,3 @@ function initFanControls() {
 
 // Ensure fan controls are initialized when DOM is ready
 document.addEventListener('DOMContentLoaded', initFanControls);
-

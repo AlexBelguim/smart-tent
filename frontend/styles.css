@@ -305,6 +305,68 @@ body::before {
     border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.metric-interactive {
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.metric-interactive:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--accent-green);
+    transform: translateY(-2px);
+}
+
+.metric-interactive:active {
+    transform: translateY(0);
+}
+
+.history-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.history-table th,
+.history-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.history-table th {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+.history-table td {
+    font-variant-numeric: tabular-nums;
+}
+
+.history-table tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.history-bar-container {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    margin-top: 4px;
+    overflow: hidden;
+}
+
+.history-bar {
+    height: 100%;
+    background: var(--accent-green);
+    border-radius: 3px;
+}
+
 .metric-large {
     grid-column: span 3;
     padding: 1.5rem;

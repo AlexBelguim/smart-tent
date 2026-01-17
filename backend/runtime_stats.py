@@ -128,5 +128,52 @@ class RuntimeTracker:
         return {
             'day': round(day_pct, 1),
             'week': round(week_pct, 1),
-            'all_time': round(all_time_pct, 1)
+            'all_time': round(all_time_pct, 1),
+            'history_7d': self.get_daily_history()
         }
+
+    def get_daily_history(self, days=7):
+        """Calculate runtime percentage for the last N days."""
+        history_data = []
+        now = datetime.now()
+        today = now.date()
+        
+        # We need to reconstruct the timeline from samples
+        # This is expensive to do every poll, but get_metrics is called every poll?
+        # Maybe we should cache it or compute only on demand?
+        # For now, let's just do it, but optimize if needed.
+        # Actually, iterate samples one pass.
+        
+        # Buckets for each day
+        buckets = {} # date -> {on: 0, total: 0}
+        
+        # Initialize buckets
+        for i in range(days):
+            d = today - timedelta(days=i)
+            buckets[d] = {'on': 0, 'total': 0}
+            
+        cutoff = time.mktime((today - timedelta(days=days-1)).timetuple()) # Start of 7th day back
+        
+        for ts, state in self.history:
+            if ts < cutoff:
+                continue
+                
+            try:
+                dt = datetime.fromtimestamp(ts).date()
+                if dt in buckets:
+                    buckets[dt]['total'] += 1
+                    if state:
+                        buckets[dt]['on'] += 1
+            except Exception:
+                pass
+                
+        # Convert to list
+        for d in sorted(buckets.keys()):
+            b = buckets[d]
+            pct = (b['on'] / b['total'] * 100) if b['total'] > 0 else 0
+            history_data.append({
+                'date': d.isoformat(),
+                'percent': round(pct, 1)
+            })
+            
+        return history_data
