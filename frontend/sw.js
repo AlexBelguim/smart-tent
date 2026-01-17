@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-tent-v22';
+const CACHE_NAME = 'smart-tent-v23';
 const ASSETS = [
     '/',
     '/index.html',
