@@ -5,7 +5,7 @@ from collections import deque
 from datetime import datetime, timedelta
 
 HISTORY_FILE = 'runtime_history.json'
-MAX_HISTORY_SECONDS = 7 * 24 * 3600  # 7 Days
+MAX_HISTORY_SECONDS = 365 * 24 * 3600  # 1 Year (365 days)
 
 class RuntimeTracker:
     def __init__(self):
@@ -56,6 +56,13 @@ class RuntimeTracker:
         """Record a new sample."""
         now = int(time.time())
         
+        # Optimization: Only store sample every 60 seconds to keep file size 
+        # manageable for 1 year of history (~15MB vs ~200MB)
+        if self.history:
+            last_ts = self.history[-1][0]
+            if now - last_ts < 60:
+                return
+
         # Update history
         self.history.append((now, is_on))
         
