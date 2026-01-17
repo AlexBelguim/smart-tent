@@ -27,6 +27,10 @@ const NOTIFICATION_COOLDOWNS = {
     power: { last: 0, duration: 5 * 60 * 1000 }          // 5 minutes
 };
 
+// Global data storage for interactive tiles
+let currentTapoData = null;
+let currentDreoData = null;
+
 function loadSettings() {
     try {
         const saved = localStorage.getItem('smartTentSettings');
@@ -200,20 +204,8 @@ function updateDreoCard(data) {
     const errorEl = document.getElementById('dreoError');
     const card = document.getElementById('dreoCard');
 
-    // Make tiles interactive
-    if (dayEl) {
-        dayEl.parentElement.classList.add('metric-interactive');
-        dayEl.parentElement.onclick = () => showHumidifierHistory(data.runtime_stats?.history_7d);
-        // Add pointer hint to label
-        const label = dayEl.parentElement.querySelector('.metric-label');
-        if (label && !label.textContent.includes('👆')) label.textContent += ' 👆';
-    }
-    if (weekEl) {
-        weekEl.parentElement.classList.add('metric-interactive');
-        weekEl.parentElement.onclick = () => showHumidifierHistory(data.runtime_stats?.history_7d);
-        const label = weekEl.parentElement.querySelector('.metric-label');
-        if (label && !label.textContent.includes('👆')) label.textContent += ' 👆';
-    }
+    // Update global data
+    currentDreoData = data;
 
     card.classList.remove('loading');
 
@@ -628,6 +620,9 @@ function updateTapoCard(data) {
     const errorEl = document.getElementById('tapoError');
     const card = document.getElementById('tapoCard');
 
+    // Update global data
+    currentTapoData = data;
+
     card.classList.remove('loading');
 
     const currency = data.currency || '€';
@@ -672,11 +667,6 @@ function updateTapoCard(data) {
     monthCostEl.textContent = data.month_cost !== undefined ? `${currency} ${data.month_cost.toFixed(2)}` : `${currency} --`;
     yearCostEl.textContent = data.year_cost !== undefined ? `${currency} ${data.year_cost.toFixed(2)}` : `${currency} --`;
     if (todayCostEl) todayCostEl.textContent = data.today_cost !== undefined ? `${currency} ${data.today_cost.toFixed(2)}` : `${currency} --`;
-
-    // History interaction
-    if (todayCostTile) {
-        todayCostTile.onclick = () => showEnergyHistory(data.history_7d, currency);
-    }
 
     // Check for power notifications
     checkPowerNotification(data);
@@ -772,6 +762,38 @@ function init() {
 
     // Initialize Camera
     initCameraCard();
+
+    // Initialize Tile Interactions (static binding)
+    initTileInteractions();
+}
+
+/**
+ * Initialize interactions for static tiles (Energy, Humidifier)
+ */
+function initTileInteractions() {
+    const tapoTodayCostTile = document.getElementById('tapoTodayCostTile');
+    const dreoDayTile = document.getElementById('dreoDayTile');
+    const dreoWeekTile = document.getElementById('dreoWeekTile');
+
+    if (tapoTodayCostTile) {
+        tapoTodayCostTile.onclick = () => {
+            const currency = currentTapoData?.currency || '€';
+            showEnergyHistory(currentTapoData?.history_7d, currency);
+        };
+    }
+
+    if (dreoDayTile) {
+        dreoDayTile.onclick = () => {
+            showHumidifierHistory(currentDreoData?.runtime_stats?.history_7d);
+        };
+    }
+
+    if (dreoWeekTile) {
+        dreoWeekTile.onclick = () => {
+            // Both day and week tiles show the same 7-day history for now
+            showHumidifierHistory(currentDreoData?.runtime_stats?.history_7d);
+        };
+    }
 }
 
 /**
