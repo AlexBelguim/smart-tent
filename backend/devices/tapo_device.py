@@ -24,6 +24,36 @@ class TapoDevice:
         self.last_state: Optional[bool] = None
         self.on_since: Optional[datetime] = None
         
+        # Persistence
+        self.history_file = 'energy_history.json'
+        self.cached_history = []
+        self.load_history()
+        
+    def load_history(self):
+        """Load cached history from file."""
+        if os.path.exists(self.history_file):
+            try:
+                import json
+                with open(self.history_file, 'r') as f:
+                    data = json.load(f)
+                    self.cached_history = data.get('history_7d', [])
+                    # print(f"[TAPO] Loaded {len(self.cached_history)} cached history entries")
+            except Exception as e:
+                print(f"[TAPO] Error loading history cache: {e}")
+
+    def save_history(self, history):
+        """Save history to file."""
+        try:
+            import json
+            with open(self.history_file, 'w') as f:
+                json.dump({
+                    'updated': datetime.now().isoformat(),
+                    'history_7d': history
+                }, f)
+            self.cached_history = history
+        except Exception as e:
+            print(f"[TAPO] Error saving history cache: {e}")
+
     async def get_status(self) -> dict:
         """Get current status and energy data from Tapo P110."""
         if not TAPO_AVAILABLE:
@@ -169,11 +199,16 @@ class TapoDevice:
             error_msg = str(e)
             if 'password' in error_msg.lower() or 'auth' in error_msg.lower() or 'incorrect' in error_msg.lower():
                 print(f"[TAPO] Authentication failed: {error_msg}")
+            
+            # Return cached data if available (fallback)
             return {
                 'available': False,
                 'device': 'Tapo Energy Monitor',
                 'error': f'[TAPO] {error_msg}',
-                'ip': self.ip
+                'ip': self.ip,
+                # Return cached history so UI isn't empty
+                'history_7d': self.cached_history,
+                'currency': os.getenv('CURRENCY_SYMBOL', '€')
             }
 
     async def get_daily_history(self, kwh_price):
@@ -228,11 +263,17 @@ class TapoDevice:
             # The API usually returns what it has.
             # Sort by date
             history.sort(key=lambda x: x['date'])
+            
+            # Save to cache
+            if history:
+                self.save_history(history)
+                
             return history
             
         except Exception as e:
             print(f"[TAPO] History fetch failed: {e}")
-            return []
+            # Return cached version
+            return self.cached_history
 
 
 # Singleton instance for uptime tracking
