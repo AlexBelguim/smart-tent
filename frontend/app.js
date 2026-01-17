@@ -1570,5 +1570,9 @@ function initFanControls() {
     }
 }
 
-// Ensure fan controls are initialized when DOM is ready
-document.addEventListener('DOMContentLoaded', initFanControls);
+// Ensure fan controls and tile interactions are initialized when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    initFanControls();
+    initTileInteractions();
+    initCameraCard();
+});
