@@ -451,24 +451,17 @@ def api_stats():
     # Humidity runtime history
     humidity_data = runtime_tracker.get_daily_history_range(period)
     
-    # Energy data — use accumulated all_history from Tapo device
+    # Energy data — all from accumulated daily store
     tapo = get_tapo_device()
-    energy_all = tapo.get_all_history()  # full accumulated daily data
-    
-    # Also get monthly history from latest status
-    tapo_status = get_tapo_status()
-    monthly_history = tapo_status.get('monthly_history', [])
-    
-    # Setup change notes
-    notes = get_notes()
+    kwh_price = float(os.getenv('KWH_PRICE', '0.25'))
     
     return jsonify({
         'humidity_runtime': humidity_data,
-        'energy_daily': energy_all,
-        'energy_monthly': monthly_history,
+        'energy_daily': tapo.get_all_history(),
+        'energy_monthly': tapo.get_monthly_breakdown(kwh_price),
         'notes': notes,
         'period': period,
-        'kwh_price': float(os.getenv('KWH_PRICE', '0.25')),
+        'kwh_price': kwh_price,
         'currency': os.getenv('CURRENCY_SYMBOL', '\u20ac')
     })
 
