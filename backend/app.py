@@ -17,11 +17,12 @@ load_dotenv()
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.devices import get_wiz_status, get_dreo_status, get_tapo_status, get_fan_status, get_fan_device
+from backend.devices import get_wiz_status, get_dreo_status, get_tapo_status, get_fan_status, get_fan_device, get_tapo_device
 from backend.runtime_stats import RuntimeTracker
 from backend.push_notifications import (
     get_public_key, add_subscription, remove_subscription, send_push_notification
 )
+from backend.setup_notes import get_notes, add_note, delete_note
 
 app = Flask(__name__, static_folder='../frontend', static_url_path='')
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
@@ -41,6 +42,7 @@ stop_event = Event()
 last_wiz_state = None
 last_power_above_threshold = False
 last_water_notification_time = 0
+last_humidity_low_notification_time = 0
 POWER_THRESHOLD = 200  # Watts
 RTSP_URL = "rtsp://192.168.1.246:554/Streaming/Channels/101"
 
@@ -139,7 +141,7 @@ def background_update_thread():
 
 def check_push_notifications(status):
     """Check device states and send push notifications for important events."""
-    global last_wiz_state, last_power_above_threshold, last_water_notification_time
+    global last_wiz_state, last_power_above_threshold, last_water_notification_time, last_humidity_low_notification_time
     
     devices = status.get('devices', {})
     wiz = devices.get('wiz', {})
@@ -178,6 +180,24 @@ def check_push_notifications(status):
             except Exception as e:
                 pass  # Push failed, continue silently
             last_water_notification_time = now
+    
+    # Humidity low notification (15 minute cooldown)
+    if dreo.get('available'):
+        current_humidity = dreo.get('current_humidity')
+        target_humidity = dreo.get('target_humidity')
+        if current_humidity is not None and target_humidity is not None:
+            if current_humidity < target_humidity - 10:
+                now = time.time()
+                if now - last_humidity_low_notification_time > 15 * 60:  # 15 minutes
+                    try:
+                        send_push_notification(
+                            "🌡️ Humidity Low",
+                            f"Humidity {current_humidity}% is {target_humidity - current_humidity}% below target ({target_humidity}%)",
+                            "humidity-low"
+                        )
+                    except Exception as e:
+                        pass  # Push failed, continue silently
+                    last_humidity_low_notification_time = now
 
 
 def check_fan_control(status):
@@ -414,6 +434,69 @@ def health():
         'timestamp': datetime.now().isoformat(),
         'update_interval': UPDATE_INTERVAL
     })
+
+
+@app.route('/stats')
+def stats_page():
+    """Serve the stats page."""
+    return send_from_directory(app.static_folder, 'stats.html')
+
+
+@app.route('/api/stats')
+def api_stats():
+    """Get aggregated stats for the stats page."""
+    period = int(request.args.get('period', 30))
+    period = min(period, 365)  # cap at 1 year
+    
+    # Humidity runtime history
+    humidity_data = runtime_tracker.get_daily_history_range(period)
+    
+    # Energy data — use accumulated all_history from Tapo device
+    tapo = get_tapo_device()
+    energy_all = tapo.get_all_history()  # full accumulated daily data
+    
+    # Also get monthly history from latest status
+    tapo_status = get_tapo_status()
+    monthly_history = tapo_status.get('monthly_history', [])
+    
+    # Setup change notes
+    notes = get_notes()
+    
+    return jsonify({
+        'humidity_runtime': humidity_data,
+        'energy_daily': energy_all,
+        'energy_monthly': monthly_history,
+        'notes': notes,
+        'period': period,
+        'kwh_price': float(os.getenv('KWH_PRICE', '0.25')),
+        'currency': os.getenv('CURRENCY_SYMBOL', '\u20ac')
+    })
+
+
+@app.route('/api/notes')
+def api_get_notes():
+    """Get all setup change notes."""
+    return jsonify(get_notes())
+
+
+@app.route('/api/notes', methods=['POST'])
+def api_add_note():
+    """Add a new setup change note."""
+    data = request.get_json()
+    if not data or not data.get('text'):
+        return jsonify({'error': 'Text required'}), 400
+    
+    date_str = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+    note = add_note(date_str, data['text'])
+    return jsonify(note)
+
+
+@app.route('/api/notes/<int:note_id>', methods=['DELETE'])
+def api_delete_note(note_id):
+    """Delete a setup change note."""
+    if delete_note(note_id):
+        return jsonify({'success': True})
+    return jsonify({'error': 'Note not found'}), 404
 
 
 @app.route('/api/push/key')

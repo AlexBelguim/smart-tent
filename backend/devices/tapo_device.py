@@ -26,7 +26,8 @@ class TapoDevice:
         
         # Persistence
         self.history_file = 'energy_history.json'
-        self.cached_history = []
+        self.cached_history = []  # latest 7d for dashboard tiles
+        self.all_history = {}     # date-keyed dict of ALL accumulated daily data
         self.load_history()
         
     def load_history(self):
@@ -37,22 +38,48 @@ class TapoDevice:
                 with open(self.history_file, 'r') as f:
                     data = json.load(f)
                     self.cached_history = data.get('history_7d', [])
-                    # print(f"[TAPO] Loaded {len(self.cached_history)} cached history entries")
+                    # Load accumulated history (date -> {kwh, cost})
+                    self.all_history = data.get('all_history', {})
+                    # Migrate: if all_history is empty, seed from history_7d
+                    if not self.all_history and self.cached_history:
+                        for entry in self.cached_history:
+                            self.all_history[entry['date']] = {
+                                'kwh': entry['kwh'],
+                                'cost': entry['cost']
+                            }
             except Exception as e:
                 print(f"[TAPO] Error loading history cache: {e}")
 
     def save_history(self, history):
-        """Save history to file."""
+        """Save history to file, merging new daily data into accumulated history."""
         try:
             import json
+            # Merge new entries into all_history by date
+            for entry in history:
+                self.all_history[entry['date']] = {
+                    'kwh': entry['kwh'],
+                    'cost': entry['cost']
+                }
             with open(self.history_file, 'w') as f:
                 json.dump({
                     'updated': datetime.now().isoformat(),
-                    'history_7d': history
+                    'history_7d': history,
+                    'all_history': self.all_history
                 }, f)
             self.cached_history = history
         except Exception as e:
             print(f"[TAPO] Error saving history cache: {e}")
+
+    def get_all_history(self):
+        """Return full accumulated history sorted by date."""
+        result = []
+        for date_str, data in sorted(self.all_history.items()):
+            result.append({
+                'date': date_str,
+                'kwh': data['kwh'],
+                'cost': data['cost']
+            })
+        return result
 
     async def get_status(self) -> dict:
         """Get current status and energy data from Tapo P110."""
@@ -94,6 +121,7 @@ class TapoDevice:
             
             # Get yearly energy data - try rolling 12 months, fallback to current year
             year_kwh = 0
+            monthly_history = []  # For stats page
             
             async def fetch_year_data(start_date):
                 try:
@@ -123,13 +151,22 @@ class TapoDevice:
                 if not hasattr(energy_data, 'data') or not energy_data.data:
                     current_year_start = date(datetime.now().year, 1, 1)
                     if current_year_start != year_start:
-                        # print(f"[TAPO] Rolling year empty, trying calendar year from {current_year_start}")
-                        energy_data = await fetch_year_data(current_year_start)
+                        year_start = current_year_start  # update so monthly_history uses correct start
+                        energy_data = await fetch_year_data(year_start)
 
                 # Sum data if available
                 if hasattr(energy_data, 'data') and energy_data.data:
                     year_kwh = sum(energy_data.data) / 1000
-                    # print(f"[TAPO] Yearly data: {year_kwh:.2f} kWh")
+                    # Build monthly history for the stats page
+                    if energy_data.data:
+                        for month_idx, month_wh in enumerate(energy_data.data):
+                            month_date = year_start + relativedelta(months=month_idx)
+                            month_kwh_val = month_wh / 1000
+                            monthly_history.append({
+                                'month': month_date.strftime('%Y-%m'),
+                                'kwh': round(month_kwh_val, 3),
+                                'cost': round(month_kwh_val * float(os.getenv('KWH_PRICE', '0.25')), 2)
+                            })
                 else:
                     # If still empty, use Monthly * 12 as rough estimate only if year_kwh is 0
                     print(f"[TAPO] No yearly data found. Object: {energy_data}")
@@ -206,7 +243,8 @@ class TapoDevice:
                 'kwh_price': kwh_price,
                 'currency': currency,
                 'today_cost': today_kwh * kwh_price,
-                'history_7d': history_7d
+                'history_7d': history_7d,
+                'monthly_history': monthly_history
             }
             
         except Exception as e:
@@ -235,59 +273,58 @@ class TapoDevice:
             start_date = end_date - relativedelta(days=6) # 7 days inclusive
             
             # Fetch Daily data
-            # Note: library might return different structure for Daily
-            # We use try/except to handle potential API differences
             try:
                 result = await device.get_energy_data(EnergyDataInterval.Daily, start_date)
             except Exception:
-                # Fallback or older version
-                return []
+                return self.cached_history or []
                 
             history = []
             
-            # Helper to extract data from entry
-            def get_entry_data(entry):
-                # Try to_dict first
-                if hasattr(entry, 'to_dict'):
-                    d = entry.to_dict()
-                    return d.get('local_date'), d.get('energy')
-                # Attributes
-                dt = getattr(entry, 'local_date', None) or getattr(entry, 'date', None)
-                en = getattr(entry, 'energy', 0)
-                return dt, en
-
+            # Try structured entries first (some library versions)
             entries = getattr(result, 'entries', [])
-            # specific fix for the library version if 'data' is used
-            if not entries and hasattr(result, 'data'):
-                entries = result.data
-
-            for entry in entries:
-                dt, energy_wh = get_entry_data(entry)
-                if dt:
-                    # Format date as YYYY-MM-DD
-                    date_str = dt.isoformat() if hasattr(dt, 'isoformat') else str(dt)
+            if entries:
+                for entry in entries:
+                    # Try to_dict first
+                    if hasattr(entry, 'to_dict'):
+                        d = entry.to_dict()
+                        dt = d.get('local_date')
+                        energy_wh = d.get('energy', 0)
+                    else:
+                        dt = getattr(entry, 'local_date', None) or getattr(entry, 'date', None)
+                        energy_wh = getattr(entry, 'energy', 0)
+                    
+                    if dt:
+                        date_str = dt.isoformat() if hasattr(dt, 'isoformat') else str(dt)
+                        kwh = energy_wh / 1000
+                        history.append({
+                            'date': date_str,
+                            'kwh': round(kwh, 3),
+                            'cost': round(kwh * kwh_price, 2)
+                        })
+            
+            # Fallback: raw integer array in result.data (common format)
+            if not history and hasattr(result, 'data') and result.data:
+                for i, energy_wh in enumerate(result.data):
+                    day_date = start_date + relativedelta(days=i)
                     kwh = energy_wh / 1000
                     history.append({
-                        'date': date_str,
+                        'date': day_date.isoformat(),
                         'kwh': round(kwh, 3),
                         'cost': round(kwh * kwh_price, 2)
                     })
             
-            # Ensure we have entries for all days? 
-            # The API usually returns what it has.
             # Sort by date
             history.sort(key=lambda x: x['date'])
             
-            # Save to cache
+            # Save to cache (merges into accumulated history)
             if history:
                 self.save_history(history)
                 
-            return history
+            return history if history else (self.cached_history or [])
             
         except Exception as e:
             print(f"[TAPO] History fetch failed: {e}")
-            # Return cached version
-            return self.cached_history
+            return self.cached_history or []
 
 
 # Singleton instance for uptime tracking
@@ -299,3 +336,10 @@ def get_tapo_status() -> dict:
     if _tapo_instance is None:
         _tapo_instance = TapoDevice()
     return asyncio.run(_tapo_instance.get_status())
+
+def get_tapo_device() -> TapoDevice:
+    """Get the Tapo device singleton instance."""
+    global _tapo_instance
+    if _tapo_instance is None:
+        _tapo_instance = TapoDevice()
+    return _tapo_instance

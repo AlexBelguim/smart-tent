@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Tent — Stats</title>
+    <meta name="theme-color" content="#0a0f0d">
+    <meta name="description" content="Smart Tent historical stats and graphs">
+    <link rel="stylesheet" href="styles.css?v=1.4">
+    <link rel="stylesheet" href="stats.css?v=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <a href="/" style="text-decoration: none; display: flex; align-items: center; gap: 0.75rem;">
+                        <span class="logo-icon">📊</span>
+                        <h1>Stats</h1>
+                    </a>
+                </div>
+                <div class="header-right">
+                    <a href="/" class="settings-indicator" title="Dashboard" style="text-decoration: none;">🌱</a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Period Selector -->
+        <div class="period-selector">
+            <button class="period-btn" data-period="7">7D</button>
+            <button class="period-btn active" data-period="30">30D</button>
+            <button class="period-btn" data-period="90">3M</button>
+            <button class="period-btn" data-period="365">12M</button>
+        </div>
+
+        <!-- Charts -->
+        <main class="stats-grid">
+            <!-- Energy Usage Chart -->
+            <div class="card card-energy stats-card">
+                <div class="card-header">
+                    <div class="card-icon">⚡</div>
+                    <div class="card-title">
+                        <h2>Energy Usage</h2>
+                        <span class="device-type">Daily kWh</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="energyChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Monthly Cost Chart -->
+            <div class="card card-energy stats-card">
+                <div class="card-header">
+                    <div class="card-icon">💰</div>
+                    <div class="card-title">
+                        <h2>Monthly Cost</h2>
+                        <span class="device-type" id="costCurrency">€ per month</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="costChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Humidifier Runtime Chart -->
+            <div class="card card-humidity stats-card">
+                <div class="card-header">
+                    <div class="card-icon">💨</div>
+                    <div class="card-title">
+                        <h2>Humidifier Runtime</h2>
+                        <span class="device-type">Daily On %</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="humidityChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Setup Change Notes -->
+            <div class="card stats-card notes-card">
+                <div class="card-header">
+                    <div class="card-icon">📝</div>
+                    <div class="card-title">
+                        <h2>Setup Changes</h2>
+                        <span class="device-type">Track modifications</span>
+                    </div>
+                </div>
+                <div class="notes-section">
+                    <div class="notes-form">
+                        <input type="date" id="noteDate" class="note-input">
+                        <input type="text" id="noteText" class="note-input note-text"
+                            placeholder="e.g. Added insulation">
+                        <button id="btnAddNote" class="btn-primary btn-note">Add</button>
+                    </div>
+                    <div id="notesList" class="notes-list"></div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p><a href="/" style="color: inherit; text-decoration: none; opacity: 0.7;">← Back to Dashboard</a></p>
+        </footer>
+    </div>
+
+    <script src="stats.js?v=1.0"></script>
+</body>
+
+</html>

@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS = {
     notifyWater: true,
     notifySocket: true,
     notifyPower: true,
+    notifyHumidityLow: true,
     powerThreshold: 200
 };
 
@@ -24,7 +25,8 @@ let lastPowerAboveThreshold = false;
 const NOTIFICATION_COOLDOWNS = {
     water: { last: 0, duration: 4 * 60 * 60 * 1000 },    // 4 hours
     socket: { last: 0, duration: 60 * 1000 },            // 1 minute
-    power: { last: 0, duration: 5 * 60 * 1000 }          // 5 minutes
+    power: { last: 0, duration: 5 * 60 * 1000 },         // 5 minutes
+    humidityLow: { last: 0, duration: 15 * 60 * 1000 }   // 15 minutes
 };
 
 // Global data storage for interactive tiles
@@ -262,6 +264,7 @@ function updateDreoCard(data) {
 
     // Check for notifications
     checkWaterNotification(data);
+    checkHumidityLowNotification(data);
 }
 
 
@@ -329,6 +332,19 @@ function checkPowerNotification(data) {
     }
 
     lastPowerAboveThreshold = isAbove;
+}
+
+function checkHumidityLowNotification(data) {
+    if (!notificationSettings.notifyHumidityLow) return;
+    if (!data.available) return;
+
+    const current = data.current_humidity;
+    const target = data.target_humidity;
+
+    if (current != null && target != null && current < (target - 10) && canNotify('humidityLow')) {
+        sendNotification("🌡️ Humidity Low", `Humidity is ${current}% — ${target - current}% below target (${target}%).`);
+        markNotified('humidityLow');
+    }
 }
 
 function sendNotification(title, body) {
@@ -1036,6 +1052,7 @@ function initSettingsModal() {
         notificationSettings.notifyWater = notifyWater?.checked ?? true;
         notificationSettings.notifySocket = notifySocket?.checked ?? true;
         notificationSettings.notifyPower = notifyPower?.checked ?? true;
+        notificationSettings.notifyHumidityLow = document.getElementById('notifyHumidityLow')?.checked ?? true;
         notificationSettings.powerThreshold = parseInt(powerThreshold?.value) || 200;
         saveSettings();
     }
@@ -1266,6 +1283,18 @@ function updateFanCard(data, wizData, dreoData) {
     // Return to normal speed when humidity override ends
     if (!shouldOverride && humidityOverrideActive === false && currentFanMode !== 'control') {
         // Just exited override - restore day/night speed
+    }
+
+    // Update airflow footnote
+    const airflowEl = document.getElementById('fanAirflow');
+    if (airflowEl && data.speed !== undefined) {
+        // 120mm PC fan: 600 RPM = ~37 m³/h, 2000 RPM = ~122 m³/h
+        // Speed % maps linearly to RPM range 600-2000
+        const speedPct = data.speed;
+        const rpm = 600 + (speedPct / 100) * 1400;
+        const airflowM3h = (rpm / 2000) * 122;
+        const cfm = airflowM3h / 1.699; // m³/h to CFM
+        airflowEl.textContent = `🌀 Est. airflow: ${airflowM3h.toFixed(0)} m³/h (${cfm.toFixed(0)} CFM) @ ${rpm.toFixed(0)} RPM`;
     }
 }
 

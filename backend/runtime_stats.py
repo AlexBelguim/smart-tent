@@ -156,9 +156,7 @@ class RuntimeTracker:
             end_date = now - timedelta(days=i*7)
             start_date = end_date - timedelta(days=6) # 7 day window
             
-            label = f"W{i}" # placeholder
-            # Better label: Start Date
-            label = start_date.strftime("%b %d")
+            label = f"{start_date.strftime('%b %d')} – {end_date.strftime('%b %d')}"
             
             buckets[i] = {
                 'on': 0, 
@@ -236,6 +234,41 @@ class RuntimeTracker:
                 pass
                 
         # Convert to list
+        for d in sorted(buckets.keys()):
+            b = buckets[d]
+            pct = (b['on'] / b['total'] * 100) if b['total'] > 0 else 0
+            history_data.append({
+                'date': d.isoformat(),
+                'percent': round(pct, 1)
+            })
+            
+        return history_data
+
+    def get_daily_history_range(self, days=30):
+        """Calculate runtime percentage for the last N days (for stats page)."""
+        history_data = []
+        now = datetime.now()
+        today = now.date()
+        
+        buckets = {}
+        for i in range(days):
+            d = today - timedelta(days=i)
+            buckets[d] = {'on': 0, 'total': 0}
+            
+        cutoff = time.mktime((today - timedelta(days=days-1)).timetuple())
+        
+        for ts, state in self.history:
+            if ts < cutoff:
+                continue
+            try:
+                dt = datetime.fromtimestamp(ts).date()
+                if dt in buckets:
+                    buckets[dt]['total'] += 1
+                    if state:
+                        buckets[dt]['on'] += 1
+            except Exception:
+                pass
+                
         for d in sorted(buckets.keys()):
             b = buckets[d]
             pct = (b['on'] / b['total'] * 100) if b['total'] > 0 else 0

@@ -60,6 +60,10 @@
                     <input type="checkbox" id="notifyPower" checked>
                     <span>⚡ High power alerts</span>
                 </label>
+                <label class="setting-item">
+                    <input type="checkbox" id="notifyHumidityLow" checked>
+                    <span>🌡️ Humidity low alerts (10% below target)</span>
+                </label>
                 <label class="setting-item threshold">
                     <span>Power threshold:</span>
                     <input type="number" id="powerThreshold" value="200" min="0" max="5000" step="10">
@@ -80,6 +84,7 @@
                     <h1>Smart Tent</h1>
                 </div>
                 <div class="header-right">
+                    <a href="/stats" class="settings-indicator" title="Stats" style="text-decoration: none;">📊</a>
                     <button id="btnSettings" class="settings-indicator" title="Settings">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -268,6 +273,7 @@
                         </div>
                     </div>
                 </div>
+                <div class="card-footnote" id="fanAirflow">🌀 Estimated airflow: -- m³/h (120mm fan)</div>
                 <div class="card-error" id="fanError" style="display: none;"></div>
             </div>
 
