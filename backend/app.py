@@ -459,7 +459,7 @@ def api_stats():
         'humidity_runtime': humidity_data,
         'energy_daily': tapo.get_all_history(),
         'energy_monthly': tapo.get_monthly_breakdown(kwh_price),
-        'notes': notes,
+        'notes': get_notes(),
         'period': period,
         'kwh_price': kwh_price,
         'currency': os.getenv('CURRENCY_SYMBOL', '\u20ac')
