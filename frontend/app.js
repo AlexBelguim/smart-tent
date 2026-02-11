@@ -1251,6 +1251,25 @@ function updateFanCard(data, wizData, dreoData) {
     speedEl.textContent = `${data.speed}%`;
     speedEl.className = data.speed > 0 ? 'metric-value on' : 'metric-value off';
 
+    // Update airflow footnote (right after speed is confirmed valid)
+    try {
+        const airflowEl = document.getElementById('fanAirflow');
+        if (airflowEl) {
+            const speedPct = parseInt(data.speed) || 0;
+            if (speedPct > 0) {
+                // 120mm PC fan: ~600-2000 RPM range, ~37-122 m³/h
+                const rpm = 600 + (speedPct / 100) * 1400;
+                const airflowM3h = (rpm / 2000) * 122;
+                const cfm = airflowM3h / 1.699;
+                airflowEl.textContent = `🌀 Est. airflow: ${airflowM3h.toFixed(0)} m³/h / ${cfm.toFixed(0)} CFM @ ~${rpm.toFixed(0)} RPM`;
+            } else {
+                airflowEl.textContent = '🌀 Fan idle — no airflow';
+            }
+        }
+    } catch (e) {
+        console.warn('[FAN] Airflow calc error:', e);
+    }
+
     // WiFi signal strength
     if (data.rssi) {
         const rssi = data.rssi;
@@ -1283,18 +1302,6 @@ function updateFanCard(data, wizData, dreoData) {
     // Return to normal speed when humidity override ends
     if (!shouldOverride && humidityOverrideActive === false && currentFanMode !== 'control') {
         // Just exited override - restore day/night speed
-    }
-
-    // Update airflow footnote
-    const airflowEl = document.getElementById('fanAirflow');
-    if (airflowEl && data.speed !== undefined) {
-        // 120mm PC fan: 600 RPM = ~37 m³/h, 2000 RPM = ~122 m³/h
-        // Speed % maps linearly to RPM range 600-2000
-        const speedPct = data.speed;
-        const rpm = 600 + (speedPct / 100) * 1400;
-        const airflowM3h = (rpm / 2000) * 122;
-        const cfm = airflowM3h / 1.699; // m³/h to CFM
-        airflowEl.textContent = `🌀 Est. airflow: ${airflowM3h.toFixed(0)} m³/h (${cfm.toFixed(0)} CFM) @ ${rpm.toFixed(0)} RPM`;
     }
 }
 

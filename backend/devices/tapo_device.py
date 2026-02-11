@@ -60,15 +60,83 @@ class TapoDevice:
                     'kwh': entry['kwh'],
                     'cost': entry['cost']
                 }
-            with open(self.history_file, 'w') as f:
-                json.dump({
-                    'updated': datetime.now().isoformat(),
-                    'history_7d': history,
-                    'all_history': self.all_history
-                }, f)
+            self._persist()
             self.cached_history = history
         except Exception as e:
             print(f"[TAPO] Error saving history cache: {e}")
+
+    def record_daily(self, date_str, kwh, kwh_price):
+        """Record a single day's energy data into the accumulated store."""
+        self.all_history[date_str] = {
+            'kwh': round(kwh, 3),
+            'cost': round(kwh * kwh_price, 2)
+        }
+        self._persist()
+    
+    def _persist(self):
+        """Write all_history to disk."""
+        try:
+            import json
+            with open(self.history_file, 'w') as f:
+                json.dump({
+                    'updated': datetime.now().isoformat(),
+                    'all_history': self.all_history
+                }, f)
+        except Exception as e:
+            print(f"[TAPO] Error persisting history: {e}")
+
+    def get_history_range(self, days=7):
+        """Get daily history for the last N days from the accumulated store."""
+        result = []
+        for i in range(days):
+            day = date.today() - relativedelta(days=days-1-i)
+            day_str = day.isoformat()
+            if day_str in self.all_history:
+                result.append({
+                    'date': day_str,
+                    'kwh': self.all_history[day_str]['kwh'],
+                    'cost': self.all_history[day_str]['cost']
+                })
+        return result
+
+    def get_month_total(self, kwh_price=None):
+        """Calculate current month's total from daily records."""
+        month_prefix = date.today().strftime('%Y-%m')
+        total_kwh = 0
+        for day_str, data in self.all_history.items():
+            if day_str.startswith(month_prefix):
+                total_kwh += data['kwh']
+        price = kwh_price or float(os.getenv('KWH_PRICE', '0.25'))
+        return round(total_kwh, 3), round(total_kwh * price, 2)
+
+    def get_year_total(self, kwh_price=None):
+        """Calculate current year's total from daily records."""
+        year_prefix = str(date.today().year)
+        total_kwh = 0
+        for day_str, data in self.all_history.items():
+            if day_str.startswith(year_prefix):
+                total_kwh += data['kwh']
+        price = kwh_price or float(os.getenv('KWH_PRICE', '0.25'))
+        return round(total_kwh, 3), round(total_kwh * price, 2)
+
+    def get_monthly_breakdown(self, kwh_price=None):
+        """Group daily data by month for the stats page chart."""
+        from collections import defaultdict
+        months = defaultdict(float)
+        for day_str, data in self.all_history.items():
+            month_key = day_str[:7]  # 'YYYY-MM'
+            months[month_key] += data['kwh']
+        
+        price = kwh_price or float(os.getenv('KWH_PRICE', '0.25'))
+        result = []
+        for month_key in sorted(months.keys()):
+            kwh = months[month_key]
+            result.append({
+                'month': month_key,
+                'kwh': round(kwh, 3),
+                'cost': round(kwh * price, 2)
+            })
+        return result
 
     def get_all_history(self):
         """Return full accumulated history sorted by date."""
@@ -119,62 +187,12 @@ class TapoDevice:
             # Get energy usage (today/month)
             energy_usage = await device.get_energy_usage()
             
-            # Get yearly energy data - try rolling 12 months, fallback to current year
-            year_kwh = 0
-            monthly_history = []  # For stats page
+            # Get price config from env
+            kwh_price = float(os.getenv('KWH_PRICE', '0.25'))
+            currency = os.getenv('CURRENCY_SYMBOL', '€')
             
-            async def fetch_year_data(start_date):
-                try:
-                    # Attempt 1: Standard call
-                    try:
-                        return await device.get_energy_data(EnergyDataInterval.Monthly, start_date)
-                    except TypeError:
-                        pass
-                    # Attempt 2: Positional only
-                    try:
-                        return await device.get_energy_data(start_date)
-                    except TypeError:
-                        pass
-                    # Attempt 3: Keyword args
-                    return await device.get_energy_data(interval=EnergyDataInterval.Monthly, start_date=start_date)
-                except Exception as e:
-                    print(f"[TAPO] Fetch error for {start_date}: {e}")
-                    return None
-
-            try:
-                # 1. Try Rolling 12 Months
-                year_start = date.today() - relativedelta(months=12)
-                year_start = date(year_start.year, year_start.month, 1)
-                energy_data = await fetch_year_data(year_start)
-
-                # 2. If empty, try Current Calendar Year (Jan 1)
-                if not hasattr(energy_data, 'data') or not energy_data.data:
-                    current_year_start = date(datetime.now().year, 1, 1)
-                    if current_year_start != year_start:
-                        year_start = current_year_start  # update so monthly_history uses correct start
-                        energy_data = await fetch_year_data(year_start)
-
-                # Sum data if available
-                if hasattr(energy_data, 'data') and energy_data.data:
-                    year_kwh = sum(energy_data.data) / 1000
-                    # Build monthly history for the stats page
-                    if energy_data.data:
-                        for month_idx, month_wh in enumerate(energy_data.data):
-                            month_date = year_start + relativedelta(months=month_idx)
-                            month_kwh_val = month_wh / 1000
-                            monthly_history.append({
-                                'month': month_date.strftime('%Y-%m'),
-                                'kwh': round(month_kwh_val, 3),
-                                'cost': round(month_kwh_val * float(os.getenv('KWH_PRICE', '0.25')), 2)
-                            })
-                else:
-                    # If still empty, use Monthly * 12 as rough estimate only if year_kwh is 0
-                    print(f"[TAPO] No yearly data found. Object: {energy_data}")
-            
-            except Exception as e:
-                print(f"[TAPO] Could not fetch yearly data: {e}")
-                year_kwh = None
-            
+            # Convert Wh to kWh (live API values)
+            today_kwh = (energy_usage.today_energy / 1000) if hasattr(energy_usage, 'today_energy') else 0
             
             # Track when turned on for uptime calculation
             if is_on and not self.last_state:
@@ -187,44 +205,54 @@ class TapoDevice:
             uptime_seconds = None
             if self.on_since:
                 uptime_seconds = int((datetime.now() - self.on_since).total_seconds())
-            # Get price config from env
-            kwh_price = float(os.getenv('KWH_PRICE', '0.25'))
-            currency = os.getenv('CURRENCY_SYMBOL', '€')
+
+            # --- Record today's live data into the daily store ---
+            self.record_daily(date.today().isoformat(), today_kwh, kwh_price)
             
-            # Convert Wh to kWh
-            today_kwh = (energy_usage.today_energy / 1000) if hasattr(energy_usage, 'today_energy') else 0
-            month_kwh = (energy_usage.month_energy / 1000) if hasattr(energy_usage, 'month_energy') else 0
+            # --- Try to backfill from API (best-effort, non-blocking) ---
+            try:
+                api_history = await self.get_daily_history(kwh_price)
+                if api_history:
+                    for entry in api_history:
+                        if entry['date'] not in self.all_history:
+                            self.all_history[entry['date']] = {
+                                'kwh': entry['kwh'],
+                                'cost': entry['cost']
+                            }
+                    self._persist()
+            except Exception as e:
+                print(f"[TAPO] Daily history backfill failed (non-critical): {e}")
             
-            # Calculate yearly kWh - use actual data if available
-            # If API returns 0 (no history), default to current month's usage (Year-to-Date)
-            # instead of projecting (month * 12) which confuses users.
-            if year_kwh is None or year_kwh == 0:
-                if month_kwh > 0:
-                    year_kwh = month_kwh
-                    print(f"[TAPO] Using current month as yearly total (no history): {year_kwh:.2f}kWh")
-                else:
-                    year_kwh = 0
-            
-            # Calculate costs
-            month_cost = month_kwh * kwh_price
-            year_cost = year_kwh * kwh_price  # Price x yearly kWh
-            
-            # Debug output (concise)
-            # print(f"[TAPO] Power: {current_power_w}W | Today: {today_kwh:.2f}kWh | Month: {month_kwh:.2f}kWh | Year: {year_kwh:.2f}kWh")
-            
-            # Get history
-            history_7d = await self.get_daily_history(kwh_price)
-            
-            # Inject "Today" if missing from history (using live data)
-            today_str = date.today().isoformat()
-            if not any(item['date'] == today_str for item in history_7d):
-                history_7d.append({
-                    'date': today_str,
-                    'kwh': round(today_kwh, 3),
-                    'cost': round(today_kwh * kwh_price, 2)
-                })
-                # Re-sort just in case
-                history_7d.sort(key=lambda x: x['date'])
+            # Also try monthly API backfill to seed historical months
+            try:
+                year_start = date(datetime.now().year, 1, 1)
+                energy_data = await device.get_energy_data(EnergyDataInterval.Monthly, year_start)
+                if hasattr(energy_data, 'data') and energy_data.data:
+                    print(f"[TAPO] Monthly API returned {len(energy_data.data)} months: {energy_data.data}")
+                    # Backfill: for each month with data, spread it into a single "month-summary" entry
+                    # This helps when we have no daily data for past months
+                    for month_idx, month_wh in enumerate(energy_data.data):
+                        if month_wh > 0:
+                            month_date = year_start + relativedelta(months=month_idx)
+                            # Use the 1st of each month as a summary entry if we have no daily data for that month
+                            month_prefix = month_date.strftime('%Y-%m')
+                            has_daily_data = any(d.startswith(month_prefix) for d in self.all_history)
+                            if not has_daily_data:
+                                summary_key = f"{month_prefix}-01"
+                                month_kwh_val = month_wh / 1000
+                                self.all_history[summary_key] = {
+                                    'kwh': round(month_kwh_val, 3),
+                                    'cost': round(month_kwh_val * kwh_price, 2)
+                                }
+                    self._persist()
+            except Exception as e:
+                print(f"[TAPO] Monthly backfill failed (non-critical): {e}")
+
+            # --- All displayed values derived from daily store ---
+            month_kwh, month_cost = self.get_month_total(kwh_price)
+            year_kwh, year_cost = self.get_year_total(kwh_price)
+            history_7d = self.get_history_range(7)
+            monthly_history = self.get_monthly_breakdown(kwh_price)
 
             return {
                 'available': True,
@@ -242,7 +270,7 @@ class TapoDevice:
                 'year_cost': year_cost,
                 'kwh_price': kwh_price,
                 'currency': currency,
-                'today_cost': today_kwh * kwh_price,
+                'today_cost': round(today_kwh * kwh_price, 2),
                 'history_7d': history_7d,
                 'monthly_history': monthly_history
             }
