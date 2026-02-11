@@ -1257,9 +1257,10 @@ function updateFanCard(data, wizData, dreoData) {
         if (airflowEl) {
             const speedPct = parseInt(data.speed) || 0;
             if (speedPct > 0) {
-                // 120mm PC fan: ~600-2000 RPM range, ~37-122 m³/h
+                // 120mm PC fan: ~600-2000 RPM range, max ~122 m³/h
+                // RPM is roughly linear with PWM, but airflow follows a power curve
                 const rpm = 600 + (speedPct / 100) * 1400;
-                const airflowM3h = (rpm / 2000) * 122;
+                const airflowM3h = Math.pow(speedPct / 100, 0.9) * 122;
                 const cfm = airflowM3h / 1.699;
                 airflowEl.textContent = `🌀 Est. airflow: ${airflowM3h.toFixed(0)} m³/h / ${cfm.toFixed(0)} CFM @ ~${rpm.toFixed(0)} RPM`;
             } else {
