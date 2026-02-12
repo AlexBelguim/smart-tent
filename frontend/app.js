@@ -1194,6 +1194,8 @@ function initSettingsModal() {
         }
 
         const permission = Notification.permission;
+        console.log('[Settings] Notification permission:', permission);
+
         if (permission === 'granted') {
             if (notificationStatusText) notificationStatusText.textContent = "✓ Notifications enabled";
             if (btnEnableNotifications) btnEnableNotifications.style.display = 'none';
@@ -1203,6 +1205,7 @@ function initSettingsModal() {
             if (btnEnableNotifications) btnEnableNotifications.style.display = 'none';
             if (notificationStatus) notificationStatus.className = 'notification-status denied';
         } else {
+            // permission === 'default' (not yet asked)
             if (notificationStatusText) notificationStatusText.textContent = "Notifications: Not enabled";
             if (btnEnableNotifications) btnEnableNotifications.style.display = 'block';
             if (notificationStatus) notificationStatus.className = 'notification-status';
@@ -1450,11 +1453,22 @@ function updateFanCard(data, wizData, dreoData) {
                         if (fans && Array.isArray(fans)) {
                             fans.forEach(fan => {
                                 const size = fan.size || 150;
-                                const min = fan.min_rpm || 0;
-                                const max = fan.max_rpm || 2500;
-                                const rpm = min + (max - min) * (pct / 100);
-                                f += Math.pow(size / 120, 2) * (rpm / 2000) * 122;
-                                lastRPM = rpm;
+                                const minRPM = fan.min_rpm || 0;
+                                const maxRPM = fan.max_rpm || 2500;
+
+                                // Calculate max theoretical flow for this fan
+                                // Flow ~ (Size/120)^2 * (RPM/2000) * 122
+                                const maxFlow = Math.pow(size / 120, 2) * (maxRPM / 2000) * 122;
+
+                                // Use power function for realistic performance curve
+                                // airflow = speedPct^0.9 * maxFlow
+                                const speedFraction = pct / 100;
+                                const actualFlow = Math.pow(speedFraction, 0.9) * maxFlow;
+
+                                f += actualFlow;
+
+                                // Track RPM for display (linear interpolation for display only)
+                                lastRPM = minRPM + (maxRPM - minRPM) * speedFraction;
                             });
                         }
                         return f;
