@@ -112,10 +112,13 @@ async def main():
     # Save
     print(f"Saving total {len(all_history)} records to {HISTORY_FILE}...")
     try:
+        # Sort for clean file
+        sorted_history = dict(sorted(all_history.items()))
+        
         with open(HISTORY_FILE, 'w') as f:
             json.dump({
                 'updated': datetime.now().isoformat(),
-                'all_history': all_history
+                'all_history': sorted_history
             }, f, indent=2)
         print("Done!")
     except Exception as e:

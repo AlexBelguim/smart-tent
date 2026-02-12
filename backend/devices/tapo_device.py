@@ -89,11 +89,14 @@ class TapoDevice:
         """Write all_history to disk."""
         try:
             import json
+            # Sort history by date key for consistent file order
+            sorted_history = dict(sorted(self.all_history.items()))
+            
             with open(self.history_file, 'w') as f:
                 json.dump({
                     'updated': datetime.now().isoformat(),
-                    'all_history': self.all_history
-                }, f)
+                    'all_history': sorted_history
+                }, f, indent=2)
         except Exception as e:
             print(f"[TAPO] Error persisting history: {e}")
 
