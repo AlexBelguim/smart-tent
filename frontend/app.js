@@ -1509,13 +1509,18 @@ function updateFanCard(data, wizData, dreoData) {
 
                     if (ratio < -0.05) { pText = "Negative Pressure"; pColor = "var(--accent-green)"; }
                     else if (ratio > 0.05) { pText = "Positive Pressure"; pColor = "var(--accent-red)"; }
-
                     html += `<br><small style="color:${pColor}; opacity:0.9">${pText}</small>`;
                 }
 
-                // Footnote: Day/Night Reference
+                // Footnote: Recommended + Day/Night Reference
+                const recommendedDayMin = 1.5; // Day ideal: 1-2 minutes (faster exchange with lights on)
+                const recommendedNightMin = 2.5; // Night ideal: 2-3 minutes (slower to maintain temp/humidity)
+                const recommendedDayFlow = volM3 > 0 ? (volM3 * 60 / recommendedDayMin) : 0;
+                const recommendedNightFlow = volM3 > 0 ? (volM3 * 60 / recommendedNightMin) : 0;
+
                 html += `<div style="margin-top:0.5rem; border-top:1px solid rgba(255,255,255,0.1); padding-top:0.25rem; font-size:0.7em; color:var(--text-muted);">
-                    Day (${fanDaySpeed}%): ${getExchangeTime(dayM.total)} / Night (${fanNightSpeed}%): ${getExchangeTime(nightM.total)}
+                    <div style="margin-bottom:0.25rem;"><strong style="color:var(--accent-green);">Recommended:</strong> Day ${recommendedDayMin}m (${recommendedDayFlow.toFixed(0)} m³/h) / Night ${recommendedNightMin}m (${recommendedNightFlow.toFixed(0)} m³/h)</div>
+                    <div><strong>Current:</strong> Day (${fanDaySpeed}%): ${getExchangeTime(dayM.total)} / Night (${fanNightSpeed}%): ${getExchangeTime(nightM.total)}</div>
                 </div>`;
 
                 airflowEl.innerHTML = html;
