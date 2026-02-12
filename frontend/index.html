@@ -39,36 +39,77 @@
     <!-- Settings Modal -->
     <div id="settingsModal" class="modal" style="display: none;">
         <div class="modal-content settings-modal">
-            <h3>⚙️ Notification Settings</h3>
+            <h3>⚙️ Settings</h3>
 
-            <!-- Notification Permission Status -->
-            <div id="notificationStatus" class="notification-status">
-                <span id="notificationStatusText">Notifications: Checking...</span>
-                <button id="btnEnableNotifications" class="btn-primary">Enable Notifications</button>
+            <!-- Tabs -->
+            <div class="settings-tabs">
+                <button class="tab-btn active" data-tab="general">General</button>
+                <button class="tab-btn" data-tab="airflow">Airflow</button>
             </div>
 
-            <div class="settings-form">
-                <label class="setting-item">
-                    <input type="checkbox" id="notifyWater" checked>
-                    <span>💧 Water tank empty alerts</span>
-                </label>
-                <label class="setting-item">
-                    <input type="checkbox" id="notifySocket" checked>
-                    <span>💡 Socket on/off alerts</span>
-                </label>
-                <label class="setting-item">
-                    <input type="checkbox" id="notifyPower" checked>
-                    <span>⚡ High power alerts</span>
-                </label>
-                <label class="setting-item">
-                    <input type="checkbox" id="notifyHumidityLow" checked>
-                    <span>🌡️ Humidity low alerts (10% below target)</span>
-                </label>
-                <label class="setting-item threshold">
-                    <span>Power threshold:</span>
-                    <input type="number" id="powerThreshold" value="200" min="0" max="5000" step="10">
-                    <span>W</span>
-                </label>
+            <!-- TAB 1: General (Notifications) -->
+            <div id="tab-general" class="settings-panel active">
+                <div id="notificationStatus" class="notification-status">
+                    <span id="notificationStatusText">Notifications: Checking...</span>
+                    <button id="btnEnableNotifications" class="btn-primary">Enable Notifications</button>
+                </div>
+
+                <div class="settings-form">
+                    <label class="setting-item">
+                        <input type="checkbox" id="notifyWater" checked>
+                        <span>💧 Water tank empty alerts</span>
+                    </label>
+                    <label class="setting-item">
+                        <input type="checkbox" id="notifySocket" checked>
+                        <span>💡 Socket on/off alerts</span>
+                    </label>
+                    <label class="setting-item">
+                        <input type="checkbox" id="notifyPower" checked>
+                        <span>⚡ High power alerts</span>
+                    </label>
+                    <label class="setting-item">
+                        <input type="checkbox" id="notifyHumidityLow" checked>
+                        <span>🌡️ Humidity low alerts (10% below target)</span>
+                    </label>
+                    <label class="setting-item threshold">
+                        <span>Power threshold:</span>
+                        <input type="number" id="powerThreshold" value="200" min="0" max="5000" step="10">
+                        <span>W</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- TAB 2: Airflow Config -->
+            <div id="tab-airflow" class="settings-panel">
+                <div class="settings-form">
+                    <h4>Tent Dimensions (cm)</h4>
+                    <div class="input-row">
+                        <label>W: <input type="number" id="tentWidth" value="120" min="10" step="10"></label>
+                        <label>D: <input type="number" id="tentDepth" value="120" min="10" step="10"></label>
+                        <label>H: <input type="number" id="tentHeight" value="200" min="10" step="10"></label>
+                    </div>
+
+                    <h4>Exhaust Fans</h4>
+                    <div class="input-row">
+                        <label>Count: <input type="number" id="exhaustCount" value="1" min="0"></label>
+                        <label>Size (mm): <input type="number" id="exhaustSize" value="150" step="10"></label>
+                    </div>
+                    <div class="input-row">
+                        <label>Min RPM: <input type="number" id="exhaustMinRPM" value="0" step="100"></label>
+                        <label>Max RPM: <input type="number" id="exhaustMaxRPM" value="2500" step="100"></label>
+                    </div>
+
+                    <h4>Intake Fans</h4>
+                    <div class="input-row">
+                        <label>Count: <input type="number" id="intakeCount" value="0" min="0"></label>
+                        <label>Size (mm): <input type="number" id="intakeSize" value="150" step="10"></label>
+                    </div>
+                    <div class="input-row">
+                        <label>Min RPM: <input type="number" id="intakeMinRPM" value="0" step="100"></label>
+                        <label>Max RPM: <input type="number" id="intakeMaxRPM" value="2500" step="100"></label>
+                    </div>
+                    <p class="setting-note">Used to calculate air exchange rate & balance.</p>
+                </div>
             </div>
             <div class="modal-actions">
                 <button id="btnCloseSettings" class="btn-primary">Close</button>

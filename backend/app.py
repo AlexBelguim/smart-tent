@@ -339,22 +339,36 @@ def set_fan_speed():
 FAN_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), 'fan_settings.json')
 
 def load_fan_settings():
-    """Load fan day/night settings from file."""
+    """Load fan settings from file."""
+    default_settings = {
+        'day': 75, 
+        'night': 30,
+        # Airflow defaults
+        'tent_width': 120, 'tent_depth': 120, 'tent_height': 200,
+        'exhaust_count': 1, 'exhaust_size': 150, 'exhaust_max_rpm': 2500, 'exhaust_min_rpm': 0,
+        'intake_count': 0, 'intake_size': 150, 'intake_max_rpm': 2500, 'intake_min_rpm': 0
+    }
     try:
         if os.path.exists(FAN_SETTINGS_FILE):
             with open(FAN_SETTINGS_FILE, 'r') as f:
                 import json
-                return json.load(f)
+                saved = json.load(f)
+                # Merge saved with defaults to ensure all keys exist
+                return {**default_settings, **saved}
     except Exception as e:
         print(f"[FAN] Failed to load settings: {e}")
-    return {'day': 75, 'night': 30}
+    return default_settings
 
-def save_fan_settings(day_speed, night_speed):
-    """Save fan day/night settings to file."""
+def save_fan_settings(new_settings):
+    """Save fan settings to file."""
     try:
+        # Load existing to preserve keys not in new_settings
+        current = load_fan_settings()
+        current.update(new_settings)
+        
         import json
         with open(FAN_SETTINGS_FILE, 'w') as f:
-            json.dump({'day': day_speed, 'night': night_speed}, f)
+            json.dump(current, f)
         return True
     except Exception as e:
         print(f"[FAN] Failed to save settings: {e}")
@@ -362,24 +376,16 @@ def save_fan_settings(day_speed, night_speed):
 
 @app.route('/api/fan/settings')
 def get_fan_settings():
-    """Get fan day/night settings."""
+    """Get fan settings."""
     return jsonify(load_fan_settings())
 
 @app.route('/api/fan/settings', methods=['POST'])
 def set_fan_settings():
-    """Save fan day/night settings."""
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'No data provided'}), 400
-    
-    day_speed = data.get('day', 75)
-    night_speed = data.get('night', 30)
-    
-    if save_fan_settings(day_speed, night_speed):
-        print(f"[FAN] Settings saved: day={day_speed}%, night={night_speed}%")
-        return jsonify({'success': True, 'day': day_speed, 'night': night_speed})
-    else:
-        return jsonify({'error': 'Failed to save settings'}), 500
+    """Save fan settings."""
+    data = request.json
+    if save_fan_settings(data):
+        return jsonify(load_fan_settings())
+    return jsonify({'error': 'Failed to save'}), 500
 
 
 @app.route('/api/fan/schedule')

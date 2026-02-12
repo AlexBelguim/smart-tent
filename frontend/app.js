@@ -1028,33 +1028,100 @@ function initSettingsModal() {
     const btnCloseSettings = document.getElementById('btnCloseSettings');
 
     // Only show settings in PWA mode (notifications only work in PWA)
-    if (!isRunningAsPWA) {
-        if (btnSettings) btnSettings.style.display = 'none';
-        return;
-    }
+    // Actually, show settings everywhere now since we have Airflow config
+    // if (!isRunningAsPWA) { ... } -> Removed restriction
 
-    // Settings form elements
+    // Settings form elements - General
     const notifyWater = document.getElementById('notifyWater');
     const notifySocket = document.getElementById('notifySocket');
     const notifyPower = document.getElementById('notifyPower');
     const powerThreshold = document.getElementById('powerThreshold');
 
+    // Settings form elements - Airflow
+    const tentWidth = document.getElementById('tentWidth');
+    const tentDepth = document.getElementById('tentDepth');
+    const tentHeight = document.getElementById('tentHeight');
+    const exhaustCount = document.getElementById('exhaustCount');
+    const exhaustSize = document.getElementById('exhaustSize');
+    const exhaustMinRPM = document.getElementById('exhaustMinRPM');
+    const exhaustMaxRPM = document.getElementById('exhaustMaxRPM');
+    const intakeCount = document.getElementById('intakeCount');
+    const intakeSize = document.getElementById('intakeSize');
+    const intakeMinRPM = document.getElementById('intakeMinRPM');
+    const intakeMaxRPM = document.getElementById('intakeMaxRPM');
+
+    // Tab Logic
+    const tabs = document.querySelectorAll('.tab-btn');
+    const panels = document.querySelectorAll('.settings-panel');
+
+    tabs.forEach(tab => {
+        tab.onclick = () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            panels.forEach(p => p.classList.remove('active'));
+            tab.classList.add('active');
+            const target = document.getElementById(`tab-${tab.dataset.tab}`);
+            if (target) target.classList.add('active');
+        };
+    });
+
     // Load current settings into form
     function loadSettingsToForm() {
+        // Notifications
         if (notifyWater) notifyWater.checked = notificationSettings.notifyWater;
         if (notifySocket) notifySocket.checked = notificationSettings.notifySocket;
         if (notifyPower) notifyPower.checked = notificationSettings.notifyPower;
         if (powerThreshold) powerThreshold.value = notificationSettings.powerThreshold;
+
+        // Airflow
+        if (tentWidth) tentWidth.value = airflowConfig.tent_width || 120;
+        if (tentDepth) tentDepth.value = airflowConfig.tent_depth || 120;
+        if (tentHeight) tentHeight.value = airflowConfig.tent_height || 200;
+
+        if (exhaustCount) exhaustCount.value = airflowConfig.exhaust_count !== undefined ? airflowConfig.exhaust_count : 1;
+        if (exhaustSize) exhaustSize.value = airflowConfig.exhaust_size || 150;
+        if (exhaustMinRPM) exhaustMinRPM.value = airflowConfig.exhaust_min_rpm || 0;
+        if (exhaustMaxRPM) exhaustMaxRPM.value = airflowConfig.exhaust_max_rpm || 2500;
+
+        if (intakeCount) intakeCount.value = airflowConfig.intake_count !== undefined ? airflowConfig.intake_count : 0;
+        if (intakeSize) intakeSize.value = airflowConfig.intake_size || 150;
+        if (intakeMinRPM) intakeMinRPM.value = airflowConfig.intake_min_rpm || 0;
+        if (intakeMaxRPM) intakeMaxRPM.value = airflowConfig.intake_max_rpm || 2500;
     }
 
     // Save settings from form
     function saveSettingsFromForm() {
+        // Save Notifications (Local)
         notificationSettings.notifyWater = notifyWater?.checked ?? true;
         notificationSettings.notifySocket = notifySocket?.checked ?? true;
         notificationSettings.notifyPower = notifyPower?.checked ?? true;
         notificationSettings.notifyHumidityLow = document.getElementById('notifyHumidityLow')?.checked ?? true;
         notificationSettings.powerThreshold = parseInt(powerThreshold?.value) || 200;
         saveSettings();
+
+        // Save Airflow (Backend)
+        const newAirflow = {
+            tent_width: parseInt(tentWidth?.value) || 120,
+            tent_depth: parseInt(tentDepth?.value) || 120,
+            tent_height: parseInt(tentHeight?.value) || 200,
+            exhaust_count: parseInt(exhaustCount?.value) || 0,
+            exhaust_size: parseInt(exhaustSize?.value) || 150,
+            exhaust_min_rpm: parseInt(exhaustMinRPM?.value) || 0,
+            exhaust_max_rpm: parseInt(exhaustMaxRPM?.value) || 2500,
+            intake_count: parseInt(intakeCount?.value) || 0,
+            intake_size: parseInt(intakeSize?.value) || 150,
+            intake_min_rpm: parseInt(intakeMinRPM?.value) || 0,
+            intake_max_rpm: parseInt(intakeMaxRPM?.value) || 2500
+        };
+
+        // Update local object immediately for UI updates
+        airflowConfig = { ...airflowConfig, ...newAirflow };
+
+        // Persist to server
+        fetch('/api/fan/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(airflowConfig)
+        }).catch(e => console.error('Failed to save airflow settings:', e));
     }
 
     // Notification permission UI elements
@@ -1111,6 +1178,7 @@ function initSettingsModal() {
 
     // Open modal
     if (btnSettings) {
+        btnSettings.style.display = ''; // Ensure visible
         btnSettings.onclick = () => {
             loadSettingsToForm();
             updateNotificationStatus();
@@ -1121,11 +1189,12 @@ function initSettingsModal() {
     // Close modal
     if (btnCloseSettings) {
         btnCloseSettings.onclick = () => {
+            saveSettingsFromForm(); // Auto-save on close
             if (settingsModal) settingsModal.style.display = 'none';
         };
     }
 
-    // Save on change
+    // Save on change (for checkboxes)
     [notifyWater, notifySocket, notifyPower, powerThreshold].forEach(el => {
         if (el) {
             el.addEventListener('change', saveSettingsFromForm);
@@ -1136,6 +1205,7 @@ function initSettingsModal() {
     if (settingsModal) {
         settingsModal.onclick = (e) => {
             if (e.target === settingsModal) {
+                saveSettingsFromForm(); // Auto-save
                 settingsModal.style.display = 'none';
             }
         };
@@ -1149,32 +1219,48 @@ document.addEventListener('DOMContentLoaded', init);
 
 let fanAuthPin = null;  // Cached PIN for session
 let pendingFanAction = null;  // { type: 'speed'|'daynight', data: any }
-let fanDaySpeed = 75;   // Day speed from localStorage
-let fanNightSpeed = 30; // Night speed from localStorage
+let fanDaySpeed = 75;   // Legacy compat
+let fanNightSpeed = 30; // Legacy compat
 let currentFanMode = 'night';  // 'day', 'night', or 'control'
 let lastWizOn = null;   // Track wiz state for auto-switching
 let humidityOverrideActive = false;  // True when humidity override is active
 
-// Load saved day/night speeds from backend
-(async function loadFanSettings() {
+// Global Airflow Config
+let airflowConfig = {
+    day: 75, night: 30,
+    tent_width: 120, tent_depth: 120, tent_height: 200,
+    exhaust_count: 1, exhaust_size: 150, exhaust_max_rpm: 2500, exhaust_min_rpm: 0,
+    intake_count: 0, intake_size: 150, intake_max_rpm: 2500, intake_min_rpm: 0,
+    // defaults
+};
+
+// Load saved settings from backend
+async function loadFanSettings() {
     try {
         const response = await fetch('/api/fan/settings');
         if (response.ok) {
             const data = await response.json();
-            fanDaySpeed = data.day || 75;
-            fanNightSpeed = data.night || 30;
-            console.log(`[FAN] Loaded settings from backend: day=${fanDaySpeed}%, night=${fanNightSpeed}%`);
+            airflowConfig = { ...airflowConfig, ...data };
 
-            // Update inputs if they exist
+            // Sync legacy vars
+            fanDaySpeed = airflowConfig.day;
+            fanNightSpeed = airflowConfig.night;
+
+            console.log(`[FAN] Loaded settings: day=${fanDaySpeed}%, night=${fanNightSpeed}%`);
+
+            // Update inputs if they exist (Fan Card)
             const dayInput = document.getElementById('fanDaySpeed');
             const nightInput = document.getElementById('fanNightSpeed');
             if (dayInput) dayInput.value = fanDaySpeed;
             if (nightInput) nightInput.value = fanNightSpeed;
         }
     } catch (e) {
-        console.log('[FAN] Failed to load settings from backend, using defaults');
+        console.log('[FAN] Failed to load settings from backend:', e);
     }
-})();
+}
+
+// Initial load
+loadFanSettings();
 
 /**
  * Update fan card with status data and auto-switch based on lights/humidity
@@ -1251,20 +1337,77 @@ function updateFanCard(data, wizData, dreoData) {
     speedEl.textContent = `${data.speed}%`;
     speedEl.className = data.speed > 0 ? 'metric-value on' : 'metric-value off';
 
-    // Update airflow footnote (right after speed is confirmed valid)
+    // Update airflow footnote (dynamic calculation)
     try {
         const airflowEl = document.getElementById('fanAirflow');
         if (airflowEl) {
             const speedPct = parseInt(data.speed) || 0;
+
             if (speedPct > 0) {
-                // 120mm PC fan: ~600-2000 RPM range, max ~122 m³/h
-                // RPM is roughly linear with PWM, but airflow follows a power curve
-                const rpm = 600 + (speedPct / 100) * 1400;
-                const airflowM3h = Math.pow(speedPct / 100, 0.9) * 122;
-                const cfm = airflowM3h / 1.699;
-                airflowEl.textContent = `🌀 Est. airflow: ${airflowM3h.toFixed(0)} m³/h / ${cfm.toFixed(0)} CFM @ ~${rpm.toFixed(0)} RPM`;
+                // Default config if loading failed
+                const cfg = airflowConfig || {};
+                const volWidth = cfg.tent_width || 120;
+                const volDepth = cfg.tent_depth || 120;
+                const volHeight = cfg.tent_height || 200;
+                const volM3 = (volWidth * volDepth * volHeight) / 1000000;
+
+                // Exhaust calc (Ref: 120mm@2000rpm ~ 122m3h)
+                const exCount = cfg.exhaust_count !== undefined ? cfg.exhaust_count : 1;
+                const exSize = cfg.exhaust_size || 150;
+                const exMin = cfg.exhaust_min_rpm || 0;
+                const exMax = cfg.exhaust_max_rpm || 2500;
+
+                // Calculate Exhaust RPM & Flow
+                // Linear interpolation: Min + (Max-Min)*Pct
+                const curExRPM = exMin + (exMax - exMin) * (speedPct / 100);
+                // Flow ~ Size^2 * RPM
+                const exFlow = exCount * Math.pow(exSize / 120, 2) * (curExRPM / 2000) * 122;
+
+                // Intake calc
+                const inCount = cfg.intake_count !== undefined ? cfg.intake_count : 0;
+                const inSize = cfg.intake_size || 150;
+                const inMin = cfg.intake_min_rpm || 0;
+                const inMax = cfg.intake_max_rpm || 2500;
+
+                const curInRPM = inMin + (inMax - inMin) * (speedPct / 100);
+                const inFlow = inCount * Math.pow(inSize / 120, 2) * (curInRPM / 2000) * 122;
+
+                // Total Flow = Max(Exhaust, Intake) (Series/Pressure logic approximation)
+                const totalFlow = Math.max(exFlow, inFlow);
+
+                // Metrics
+                const ach = volM3 > 0 ? totalFlow / volM3 : 0;
+                const minsPerExchange = ach > 0 ? 60 / ach : 0;
+
+                let html = `🌀 Flow: <strong>${totalFlow.toFixed(0)} m³/h</strong>`;
+
+                if (minsPerExchange > 0 && minsPerExchange < 600) {
+                    html += ` • Replace: <strong>${minsPerExchange.toFixed(1)}m</strong>`;
+                }
+
+                // Display RPM of the dominant fan type (usually exhaust)
+                const displayRPM = exFlow >= inFlow ? curExRPM : curInRPM;
+                html += ` <small class="text-muted">(@ ~${displayRPM.toFixed(0)} RPM)</small>`;
+
+                // Pressure Status
+                if (inCount > 0 || exCount > 0) {
+                    // Pressure depends on the difference
+                    const net = inFlow - exFlow; // + means Intake > Exhaust (Pos), - means Ex > In (Neg)
+                    // Ratio relative to total flow
+                    const ratio = totalFlow > 0 ? net / totalFlow : 0;
+
+                    let pText = "Balanced";
+                    let pColor = "var(--text-muted)";
+
+                    if (ratio < -0.1) { pText = "Neg. Pressure"; pColor = "var(--accent-green)"; }
+                    else if (ratio > 0.1) { pText = "Pos. Pressure"; pColor = "var(--accent-red)"; }
+
+                    html += `<br><small style="color:${pColor}; opacity:0.9">${pText}</small>`;
+                }
+
+                airflowEl.innerHTML = html;
             } else {
-                airflowEl.textContent = '🌀 Fan idle — no airflow';
+                airflowEl.innerHTML = '🌀 Fan idle — no airflow';
             }
         }
     } catch (e) {
