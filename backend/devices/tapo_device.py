@@ -67,6 +67,18 @@ class TapoDevice:
 
     def record_daily(self, date_str, kwh, kwh_price):
         """Record a single day's energy data into the accumulated store."""
+        current_entry = self.all_history.get(date_str, {'kwh': -1})
+        
+        # Prevent daily rollover race condition:
+        # If plug time is slightly ahead of server time at midnight,
+        # plug returns 0.0 (new day) while server still uses yesterday's date.
+        # This would overwrite yesterday's ~2.0kWh with 0.0.
+        if kwh < current_entry['kwh']:
+            # Log only if the drop is significant (> 0.1 kWh) to avoid log spam on minor glitches
+            if current_entry['kwh'] - kwh > 0.1:
+                print(f"[TAPO] Ignored daily kwh drop for {date_str}: {current_entry['kwh']} -> {kwh} (Rollover protection)")
+            return
+
         self.all_history[date_str] = {
             'kwh': round(kwh, 3),
             'cost': round(kwh * kwh_price, 2)
