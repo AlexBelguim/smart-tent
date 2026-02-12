@@ -41,10 +41,10 @@
         <div class="modal-content settings-modal">
             <h3>⚙️ Settings</h3>
 
-            <!-- Tabs -->
-            <div class="settings-tabs">
-                <button class="tab-btn active" data-tab="general">General</button>
-                <button class="tab-btn" data-tab="airflow">Airflow</button>
+            <!-- Tabs (Segmented Control) -->
+            <div class="segmented-control">
+                <button class="segmented-btn active" data-tab="general">General</button>
+                <button class="segmented-btn" data-tab="airflow">Airflow</button>
             </div>
 
             <!-- TAB 1: General (Notifications) -->
@@ -90,24 +90,17 @@
                     </div>
 
                     <h4>Exhaust Fans</h4>
-                    <div class="input-row">
-                        <label>Count: <input type="number" id="exhaustCount" value="1" min="0"></label>
-                        <label>Size (mm): <input type="number" id="exhaustSize" value="150" step="10"></label>
+                    <div id="exhaust-fans-list" class="fan-list">
+                        <!-- Dynamic fan rows will be added here -->
                     </div>
-                    <div class="input-row">
-                        <label>Min RPM: <input type="number" id="exhaustMinRPM" value="0" step="100"></label>
-                        <label>Max RPM: <input type="number" id="exhaustMaxRPM" value="2500" step="100"></label>
-                    </div>
+                    <button type="button" class="btn-add-fan" onclick="addFan('exhaust')">+ Add Exhaust Fan</button>
 
-                    <h4>Intake Fans</h4>
-                    <div class="input-row">
-                        <label>Count: <input type="number" id="intakeCount" value="0" min="0"></label>
-                        <label>Size (mm): <input type="number" id="intakeSize" value="150" step="10"></label>
+                    <h4 style="margin-top: 1.5rem;">Intake Fans</h4>
+                    <div id="intake-fans-list" class="fan-list">
+                        <!-- Dynamic fan rows will be added here -->
                     </div>
-                    <div class="input-row">
-                        <label>Min RPM: <input type="number" id="intakeMinRPM" value="0" step="100"></label>
-                        <label>Max RPM: <input type="number" id="intakeMaxRPM" value="2500" step="100"></label>
-                    </div>
+                    <button type="button" class="btn-add-fan" onclick="addFan('intake')">+ Add Intake Fan</button>
+
                     <p class="setting-note">Used to calculate air exchange rate & balance.</p>
                 </div>
             </div>

@@ -1027,31 +1027,80 @@ function initSettingsModal() {
     const settingsModal = document.getElementById('settingsModal');
     const btnCloseSettings = document.getElementById('btnCloseSettings');
 
-    // Only show settings in PWA mode (notifications only work in PWA)
-    // Actually, show settings everywhere now since we have Airflow config
-    // if (!isRunningAsPWA) { ... } -> Removed restriction
-
     // Settings form elements - General
     const notifyWater = document.getElementById('notifyWater');
     const notifySocket = document.getElementById('notifySocket');
     const notifyPower = document.getElementById('notifyPower');
     const powerThreshold = document.getElementById('powerThreshold');
 
-    // Settings form elements - Airflow
+    // Settings form elements - Airflow (Dimensions)
     const tentWidth = document.getElementById('tentWidth');
     const tentDepth = document.getElementById('tentDepth');
     const tentHeight = document.getElementById('tentHeight');
-    const exhaustCount = document.getElementById('exhaustCount');
-    const exhaustSize = document.getElementById('exhaustSize');
-    const exhaustMinRPM = document.getElementById('exhaustMinRPM');
-    const exhaustMaxRPM = document.getElementById('exhaustMaxRPM');
-    const intakeCount = document.getElementById('intakeCount');
-    const intakeSize = document.getElementById('intakeSize');
-    const intakeMinRPM = document.getElementById('intakeMinRPM');
-    const intakeMaxRPM = document.getElementById('intakeMaxRPM');
+
+    // --- Fan Management Helpers ---
+
+    function renderFanList(containerId, fans, type) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = '';
+
+        fans.forEach((fan, index) => {
+            const div = document.createElement('div');
+            div.className = 'fan-row';
+            div.innerHTML = `
+                <div class="fan-props">
+                    <div class="fan-prop">
+                        <label>Size (mm)</label>
+                        <input type="number" class="fan-size" value="${fan.size || 150}" step="10">
+                    </div>
+                    <div class="fan-prop">
+                        <label>Min RPM</label>
+                        <input type="number" class="fan-min" value="${fan.min_rpm || 0}" step="100">
+                    </div>
+                    <div class="fan-prop">
+                        <label>Max RPM</label>
+                        <input type="number" class="fan-max" value="${fan.max_rpm || 2500}" step="100">
+                    </div>
+                </div>
+                <button type="button" class="btn-icon-danger" onclick="removeFan('${type}', ${index})" title="Remove Fan">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                </button>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    // Attach global helpers for onclick handlers
+    window.addFan = function (type) {
+        const newFan = { size: 150, min_rpm: 0, max_rpm: 2500 };
+        if (type === 'exhaust') {
+            if (!airflowConfig.exhaust_fans) airflowConfig.exhaust_fans = [];
+            airflowConfig.exhaust_fans.push(newFan);
+            renderFanList('exhaust-fans-list', airflowConfig.exhaust_fans, 'exhaust');
+        } else {
+            if (!airflowConfig.intake_fans) airflowConfig.intake_fans = [];
+            airflowConfig.intake_fans.push(newFan);
+            renderFanList('intake-fans-list', airflowConfig.intake_fans, 'intake');
+        }
+    };
+
+    window.removeFan = function (type, index) {
+        if (type === 'exhaust') {
+            if (airflowConfig.exhaust_fans) {
+                airflowConfig.exhaust_fans.splice(index, 1);
+                renderFanList('exhaust-fans-list', airflowConfig.exhaust_fans, 'exhaust');
+            }
+        } else {
+            if (airflowConfig.intake_fans) {
+                airflowConfig.intake_fans.splice(index, 1);
+                renderFanList('intake-fans-list', airflowConfig.intake_fans, 'intake');
+            }
+        }
+    };
 
     // Tab Logic
-    const tabs = document.querySelectorAll('.tab-btn');
+    const tabs = document.querySelectorAll('.segmented-btn');
     const panels = document.querySelectorAll('.settings-panel');
 
     tabs.forEach(tab => {
@@ -1077,15 +1126,10 @@ function initSettingsModal() {
         if (tentDepth) tentDepth.value = airflowConfig.tent_depth || 120;
         if (tentHeight) tentHeight.value = airflowConfig.tent_height || 200;
 
-        if (exhaustCount) exhaustCount.value = airflowConfig.exhaust_count !== undefined ? airflowConfig.exhaust_count : 1;
-        if (exhaustSize) exhaustSize.value = airflowConfig.exhaust_size || 150;
-        if (exhaustMinRPM) exhaustMinRPM.value = airflowConfig.exhaust_min_rpm || 0;
-        if (exhaustMaxRPM) exhaustMaxRPM.value = airflowConfig.exhaust_max_rpm || 2500;
+        // Render Lists
+        renderFanList('exhaust-fans-list', airflowConfig.exhaust_fans || [], 'exhaust');
 
-        if (intakeCount) intakeCount.value = airflowConfig.intake_count !== undefined ? airflowConfig.intake_count : 0;
-        if (intakeSize) intakeSize.value = airflowConfig.intake_size || 150;
-        if (intakeMinRPM) intakeMinRPM.value = airflowConfig.intake_min_rpm || 0;
-        if (intakeMaxRPM) intakeMaxRPM.value = airflowConfig.intake_max_rpm || 2500;
+        renderFanList('intake-fans-list', airflowConfig.intake_fans || [], 'intake');
     }
 
     // Save settings from form
@@ -1099,18 +1143,29 @@ function initSettingsModal() {
         saveSettings();
 
         // Save Airflow (Backend)
+        // Helper to scrape DOM inputs
+        function getFansFromDOM(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return [];
+            const rows = container.querySelectorAll('.fan-row');
+            const fans = [];
+            rows.forEach(row => {
+                fans.push({
+                    size: parseInt(row.querySelector('.fan-size').value) || 150,
+                    min_rpm: parseInt(row.querySelector('.fan-min').value) || 0,
+                    max_rpm: parseInt(row.querySelector('.fan-max').value) || 2500
+                });
+            });
+            return fans;
+        }
+
+        // Save Airflow (Backend)
         const newAirflow = {
             tent_width: parseInt(tentWidth?.value) || 120,
             tent_depth: parseInt(tentDepth?.value) || 120,
             tent_height: parseInt(tentHeight?.value) || 200,
-            exhaust_count: parseInt(exhaustCount?.value) || 0,
-            exhaust_size: parseInt(exhaustSize?.value) || 150,
-            exhaust_min_rpm: parseInt(exhaustMinRPM?.value) || 0,
-            exhaust_max_rpm: parseInt(exhaustMaxRPM?.value) || 2500,
-            intake_count: parseInt(intakeCount?.value) || 0,
-            intake_size: parseInt(intakeSize?.value) || 150,
-            intake_min_rpm: parseInt(intakeMinRPM?.value) || 0,
-            intake_max_rpm: parseInt(intakeMaxRPM?.value) || 2500
+            exhaust_fans: getFansFromDOM('exhaust-fans-list'),
+            intake_fans: getFansFromDOM('intake-fans-list')
         };
 
         // Update local object immediately for UI updates
@@ -1229,9 +1284,11 @@ let humidityOverrideActive = false;  // True when humidity override is active
 let airflowConfig = {
     day: 75, night: 30,
     tent_width: 120, tent_depth: 120, tent_height: 200,
+    exhaust_fans: [],
+    intake_fans: [],
+    // Legacy keys kept for reference but will be migrated
     exhaust_count: 1, exhaust_size: 150, exhaust_max_rpm: 2500, exhaust_min_rpm: 0,
     intake_count: 0, intake_size: 150, intake_max_rpm: 2500, intake_min_rpm: 0,
-    // defaults
 };
 
 // Load saved settings from backend
@@ -1241,6 +1298,37 @@ async function loadFanSettings() {
         if (response.ok) {
             const data = await response.json();
             airflowConfig = { ...airflowConfig, ...data };
+
+            // Migration: Convert legacy "count" to "fans" list if list is empty
+            if (!airflowConfig.exhaust_fans || !Array.isArray(airflowConfig.exhaust_fans) || (airflowConfig.exhaust_fans.length === 0 && airflowConfig.exhaust_count > 0)) {
+                if (!Array.isArray(airflowConfig.exhaust_fans)) airflowConfig.exhaust_fans = [];
+                // Only migrate if empty
+                if (airflowConfig.exhaust_fans.length === 0 && airflowConfig.exhaust_count > 0) {
+                    for (let i = 0; i < airflowConfig.exhaust_count; i++) {
+                        airflowConfig.exhaust_fans.push({
+                            size: airflowConfig.exhaust_size || 150,
+                            min_rpm: airflowConfig.exhaust_min_rpm || 0,
+                            max_rpm: airflowConfig.exhaust_max_rpm || 2500
+                        });
+                    }
+                } else if (airflowConfig.exhaust_fans.length === 0 && airflowConfig.exhaust_count === undefined) {
+                    // Default 1 fan if total new install
+                    airflowConfig.exhaust_fans.push({ size: 150, min_rpm: 0, max_rpm: 2500 });
+                }
+            }
+
+            if (!airflowConfig.intake_fans || !Array.isArray(airflowConfig.intake_fans) || (airflowConfig.intake_fans.length === 0 && airflowConfig.intake_count > 0)) {
+                if (!Array.isArray(airflowConfig.intake_fans)) airflowConfig.intake_fans = [];
+                if (airflowConfig.intake_fans.length === 0 && airflowConfig.intake_count > 0) {
+                    for (let i = 0; i < airflowConfig.intake_count; i++) {
+                        airflowConfig.intake_fans.push({
+                            size: airflowConfig.intake_size || 150,
+                            min_rpm: airflowConfig.intake_min_rpm || 0,
+                            max_rpm: airflowConfig.intake_max_rpm || 2500
+                        });
+                    }
+                }
+            }
 
             // Sync legacy vars
             fanDaySpeed = airflowConfig.day;
@@ -1351,59 +1439,70 @@ function updateFanCard(data, wizData, dreoData) {
                 const volHeight = cfg.tent_height || 200;
                 const volM3 = (volWidth * volDepth * volHeight) / 1000000;
 
-                // Exhaust calc (Ref: 120mm@2000rpm ~ 122m3h)
-                const exCount = cfg.exhaust_count !== undefined ? cfg.exhaust_count : 1;
-                const exSize = cfg.exhaust_size || 150;
-                const exMin = cfg.exhaust_min_rpm || 0;
-                const exMax = cfg.exhaust_max_rpm || 2500;
+                // Helper: Calculate total system flow at a given speed %
+                const calculateSystemFlow = (pct) => {
+                    let eFlow = 0;
+                    let iFlow = 0;
+                    let lastRPM = 0;
 
-                // Calculate Exhaust RPM & Flow
-                // Linear interpolation: Min + (Max-Min)*Pct
-                const curExRPM = exMin + (exMax - exMin) * (speedPct / 100);
-                // Flow ~ Size^2 * RPM
-                const exFlow = exCount * Math.pow(exSize / 120, 2) * (curExRPM / 2000) * 122;
+                    const getFlow = (fans) => {
+                        let f = 0;
+                        if (fans && Array.isArray(fans)) {
+                            fans.forEach(fan => {
+                                const size = fan.size || 150;
+                                const min = fan.min_rpm || 0;
+                                const max = fan.max_rpm || 2500;
+                                const rpm = min + (max - min) * (pct / 100);
+                                f += Math.pow(size / 120, 2) * (rpm / 2000) * 122;
+                                lastRPM = rpm;
+                            });
+                        }
+                        return f;
+                    };
 
-                // Intake calc
-                const inCount = cfg.intake_count !== undefined ? cfg.intake_count : 0;
-                const inSize = cfg.intake_size || 150;
-                const inMin = cfg.intake_min_rpm || 0;
-                const inMax = cfg.intake_max_rpm || 2500;
+                    eFlow = getFlow(cfg.exhaust_fans);
+                    iFlow = getFlow(cfg.intake_fans);
 
-                const curInRPM = inMin + (inMax - inMin) * (speedPct / 100);
-                const inFlow = inCount * Math.pow(inSize / 120, 2) * (curInRPM / 2000) * 122;
+                    // Return total (Max of In/Ex) and net difference
+                    return { total: Math.max(eFlow, iFlow), net: iFlow - eFlow, rpm: lastRPM, eFlow, iFlow };
+                };
 
-                // Total Flow = Max(Exhaust, Intake) (Series/Pressure logic approximation)
-                const totalFlow = Math.max(exFlow, inFlow);
+                // Current Metrics
+                const current = calculateSystemFlow(speedPct);
+                const totalFlow = current.total;
 
-                // Metrics
-                const ach = volM3 > 0 ? totalFlow / volM3 : 0;
-                const minsPerExchange = ach > 0 ? 60 / ach : 0;
+                // Day/Night Metrics (for reference)
+                const dayM = calculateSystemFlow(fanDaySpeed);
+                const nightM = calculateSystemFlow(fanNightSpeed);
 
+                const getExchangeTime = (flow) => (flow > 0 && volM3 > 0) ? (60 / (flow / volM3)).toFixed(1) + 'm' : '--';
+
+                // Display
                 let html = `🌀 Flow: <strong>${totalFlow.toFixed(0)} m³/h</strong>`;
 
+                const minsPerExchange = (volM3 > 0 && totalFlow > 0) ? 60 / (totalFlow / volM3) : 0;
                 if (minsPerExchange > 0 && minsPerExchange < 600) {
                     html += ` • Replace: <strong>${minsPerExchange.toFixed(1)}m</strong>`;
                 }
 
-                // Display RPM of the dominant fan type (usually exhaust)
-                const displayRPM = exFlow >= inFlow ? curExRPM : curInRPM;
-                html += ` <small class="text-muted">(@ ~${displayRPM.toFixed(0)} RPM)</small>`;
+                html += ` <small class="text-muted">(@ ~${current.rpm.toFixed(0)} RPM)</small>`;
 
-                // Pressure Status
-                if (inCount > 0 || exCount > 0) {
-                    // Pressure depends on the difference
-                    const net = inFlow - exFlow; // + means Intake > Exhaust (Pos), - means Ex > In (Neg)
-                    // Ratio relative to total flow
-                    const ratio = totalFlow > 0 ? net / totalFlow : 0;
-
-                    let pText = "Balanced";
+                // Pressure
+                if (current.eFlow > 0 || current.iFlow > 0) {
+                    const ratio = totalFlow > 0 ? current.net / totalFlow : 0;
+                    let pText = "Balanced Pressure";
                     let pColor = "var(--text-muted)";
 
-                    if (ratio < -0.1) { pText = "Neg. Pressure"; pColor = "var(--accent-green)"; }
-                    else if (ratio > 0.1) { pText = "Pos. Pressure"; pColor = "var(--accent-red)"; }
+                    if (ratio < -0.05) { pText = "Negative Pressure"; pColor = "var(--accent-green)"; }
+                    else if (ratio > 0.05) { pText = "Positive Pressure"; pColor = "var(--accent-red)"; }
 
                     html += `<br><small style="color:${pColor}; opacity:0.9">${pText}</small>`;
                 }
+
+                // Footnote: Day/Night Reference
+                html += `<div style="margin-top:0.5rem; border-top:1px solid rgba(255,255,255,0.1); padding-top:0.25rem; font-size:0.7em; color:var(--text-muted);">
+                    Day (${fanDaySpeed}%): ${getExchangeTime(dayM.total)} / Night (${fanNightSpeed}%): ${getExchangeTime(nightM.total)}
+                </div>`;
 
                 airflowEl.innerHTML = html;
             } else {
