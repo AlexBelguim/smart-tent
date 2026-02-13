@@ -463,7 +463,7 @@ def api_stats():
     
     return jsonify({
         'humidity_runtime': humidity_data,
-        'energy_daily': tapo.get_all_history(),
+        'energy_daily': tapo.get_history_range(period),
         'energy_monthly': tapo.get_monthly_breakdown(kwh_price),
         'notes': get_notes(),
         'period': period,

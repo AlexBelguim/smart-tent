@@ -67,7 +67,10 @@ async def main():
                     
                     if dt:
                         # dt is likely a datetime or date object
-                        if hasattr(dt, 'date'):
+                        # Fix for timezone offset: 23:00 UTC previous day -> 00:00 Local correct day
+                        if hasattr(dt, 'astimezone'):
+                            dt_date = dt.astimezone().date()
+                        elif hasattr(dt, 'date'):
                             dt_date = dt.date()
                         else:
                             dt_date = dt
@@ -89,13 +92,15 @@ async def main():
                 start_of_month = date(query_date.year, query_date.month, 1)
                 for day_idx, energy_wh in enumerate(result.data):
                     day_date = start_of_month + relativedelta(days=day_idx)
-                    if day_date > today:
+                    # Don't add future dates OR today (to avoid overwriting live accumulation)
+                    if day_date >= today:
                         continue
                         
                     date_str = day_date.isoformat()
                     kwh = round(energy_wh / 1000, 3)
                     
-                    if kwh > 0 or day_date <= today:
+                    # Store if > 0 (API returns 0 for future days in month too)
+                    if kwh > 0 or day_date < today:
                         current_val = all_history.get(date_str, {}).get('kwh', -1)
                         if kwh > current_val:
                             all_history[date_str] = {
