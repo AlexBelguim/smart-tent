@@ -169,8 +169,8 @@ class DreoDevice:
                 uptime_seconds = int((datetime.now() - self.on_since).total_seconds())
 
             # Debug: Print full state to find correct keys
-            # print(f"[DREO DEBUG] Device state keys: {state.keys()}")
-            # print(f"[DREO DEBUG] Full device dump: {device}")
+            print(f"[DREO DEBUG] Device state keys: {state.keys()}")
+            print(f"[DREO DEBUG] Full device dump: {device}")
 
             return {
                 'available': True,

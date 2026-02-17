@@ -45,7 +45,8 @@
             <div class="segmented-control">
                 <button class="segmented-btn active" data-tab="general">General</button>
                 <button class="segmented-btn" data-tab="airflow">Airflow</button>
-                <button class="segmented-btn" data-tab="temperature">Temperature</button>
+                <button class="segmented-btn" data-tab="temperature">Temp</button>
+                <button class="segmented-btn" data-tab="schedule">Schedule</button>
             </div>
 
             <!-- TAB 1: General (Notifications) -->
@@ -109,28 +110,62 @@
             <!-- TAB 3: Temperature -->
             <div id="tab-temperature" class="settings-panel">
                 <div class="settings-form">
-                    <div class="temperature-tab" data-tab="temperature">
-                        <h3>Temperature Sensors (DS18B20)</h3>
-                        <p class="temp-info">Configure DS18B20 temperature sensors connected via OneWire protocol.</p>
-
-                        <div class="temp-settings-group">
-                            <h4>OneWire Pin Configuration</h4>
-                            <p class="setting-description">GPIO pin for temperature sensor OneWire bus (default: 22)</p>
-                            <div class="input-group">
-                                <label for="temp-onewire-pin">OneWire GPIO Pin:</label>
-                                <input type="number" id="temp-onewire-pin" min="0" max="39" value="22" step="1">
-                                <button id="save-temp-pin-btn" class="primary-btn">Save Pin</button>
-                                <span class="pin-save-note">(Requires ESP32 restart)</span>
-                            </div>
-                        </div>
-
-                        <div class="temp-settings-group">
-                            <h4>Sensor Detection & Naming</h4>
-                            <button id="detect-sensors-btn" class="primary-btn">Detect Sensors</button>
-                            <div id="sensor-list"></div>
-                        </div>
-                    </div>
+                    <h4>DS18B20 Temperature Sensors</h4>
+                    <label class="setting-item">
+                        <span>OneWire Pin (GPIO):</span>
+                        <input type="number" id="tempPin" value="22" min="0" max="39" step="1" style="width: 80px;">
+                    </label>
+                    <label class="setting-item">
+                        <span>Detected Sensors:</span>
+                        <span id="tempSensorCount" style="font-weight: 600;">0</span>
+                    </label>
+                    <button type="button" id="btnDetectSensors" class="btn-primary">🔍 Detect Sensors</button>
+                    <div id="sensorList" class="sensor-list"></div>
                     <p class="setting-note">Connect all DS18B20 sensors to the same OneWire bus pin.</p>
+                </div>
+            </div>
+
+            <!-- TAB 4: Schedule -->
+            <div id="tab-schedule" class="settings-panel">
+                <div class="settings-form">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 style="margin: 0;">💡 Light Schedule</h4>
+                        <span id="serverClock"
+                            style="font-size: 0.85em; color: #6b7280; font-family: monospace;"></span>
+                    </div>
+                    <label class="setting-item">
+                        <input type="checkbox" id="lightScheduleEnabled">
+                        <span>Enable light schedule automation</span>
+                    </label>
+                    <label class="setting-item">
+                        <span>Lights ON:</span>
+                        <input type="time" id="lightOnTime" value="06:00" style="width: 120px;">
+                    </label>
+                    <label class="setting-item">
+                        <span>Lights OFF:</span>
+                        <input type="time" id="lightOffTime" value="00:00" style="width: 120px;">
+                    </label>
+
+                    <h4 style="margin-top: 1.5rem;">🔥 Heater (Night Mode)</h4>
+                    <label class="setting-item">
+                        <input type="checkbox" id="heaterEnabled">
+                        <span>Enable night heater automation</span>
+                    </label>
+                    <label class="setting-item">
+                        <span>Night target temp:</span>
+                        <input type="number" id="heaterNightTemp" value="20" min="10" max="35" step="0.5"
+                            style="width: 80px;">
+                        <span>°C</span>
+                    </label>
+                    <label class="setting-item">
+                        <span>Control Sensor:</span>
+                        <select id="heaterSensorSelect" class="form-select" style="max-width: 200px;">
+                            <option value="average">Average (All Sensors)</option>
+                        </select>
+                    </label>
+                    <p class="setting-note">Heater turns on when temp drops below target (only during night / lights
+                        off).</p>
                 </div>
             </div>
             <div class="modal-actions">

@@ -5,6 +5,7 @@
 let energyChart = null;
 let costChart = null;
 let humidityChart = null;
+let tempChart = null;
 let currentPeriod = 30;
 let setupNotes = [];
 
@@ -53,6 +54,125 @@ function buildNoteAnnotations(notes) {
         };
     });
     return annotations;
+}
+
+/**
+ * Create or update the Temperature History chart
+ */
+function renderTempChart(history, currentSensors, notes, energyData = []) {
+    const ctx = document.getElementById('tempChart');
+    if (!ctx) return;
+
+    // Check toggle state
+    const showOverlay = document.getElementById('toggleEnergyOverlay')?.checked;
+
+    // Group data by address
+    const sensors = {};
+    history.forEach(r => {
+        if (!sensors[r.address]) sensors[r.address] = [];
+        sensors[r.address].push({
+            x: r.timestamp,
+            y: r.temp_c
+        });
+    });
+
+    // Create datasets
+    const datasets = Object.keys(sensors).map((addr, i) => {
+        // Find name: check currentSensors first to handle renaming
+        const current = (currentSensors || []).find(s => s.address === addr);
+        // Fallback to name in history record if available, else address
+        const historyName = history.find(r => r.address === addr)?.name;
+        const name = current ? current.name : (historyName || addr || 'Unknown');
+
+        // Generate distinct color based on index
+        const hue = (i * 137.5) % 360;
+        const color = `hsl(${hue}, 70%, 60%)`;
+
+        return {
+            label: name,
+            data: sensors[addr],
+            borderColor: color,
+            backgroundColor: color, // for tooltip point
+            borderWidth: 2,
+            tension: 0.4,
+            pointRadius: 0,
+            pointHoverRadius: 4
+        };
+    });
+
+    // Add Energy Overlay Dataset
+    if (energyData && energyData.length > 0) {
+        datasets.push({
+            label: 'Energy (kWh)',
+            data: energyData.map(d => ({ x: d.date, y: d.kwh })),
+            type: 'line',
+            yAxisID: 'y1',
+            backgroundColor: 'rgba(168, 85, 247, 0.1)',
+            borderColor: 'rgba(168, 85, 247, 0.8)',
+            borderWidth: 2,
+            borderDash: [4, 4],
+            fill: true,
+            tension: 0.4,
+            pointRadius: 3,
+            hidden: !showOverlay
+        });
+    }
+
+    const config = {
+        type: 'line',
+        data: { datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'day',
+                        displayFormats: { day: 'MMM d' }
+                    },
+                    ticks: { maxTicksLimit: 8 },
+                    grid: { display: false }
+                },
+                y: {
+                    beginAtZero: false,
+                    title: { display: true, text: '°C', color: '#6b7280' },
+                    grid: { color: 'rgba(255,255,255,0.04)' },
+                    position: 'left'
+                },
+                y1: {
+                    display: showOverlay, // Only show axis if overlay is on
+                    beginAtZero: true,
+                    position: 'right',
+                    title: { display: true, text: 'kWh', color: '#a855f7' },
+                    grid: { drawOnChartArea: false }, // Prevent grid clash
+                    ticks: { color: '#a855f7' }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    labels: { color: '#9ca3af', boxWidth: 12 }
+                },
+                annotation: { annotations: buildNoteAnnotations(notes) },
+                tooltip: {
+                    callbacks: {
+                        title: function (items) {
+                            const d = new Date(items[0].parsed.x);
+                            return d.toLocaleString(undefined, {
+                                month: 'short', day: 'numeric',
+                                hour: '2-digit', minute: '2-digit'
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    if (tempChart) tempChart.destroy();
+    tempChart = new Chart(ctx, config);
 }
 
 /**
@@ -372,6 +492,20 @@ async function loadStats(period) {
 
     const notes = data.notes || [];
 
+    // Temperature chart
+    if (data.temp_history && data.temp_history.length > 0) {
+        // We need chart.js date adapter for time scale, but let's try basic labels if adapter missing
+        // Actually for multi-line time series we really need the adapter or manual parsing
+        // For simplicity let's stick to standard line chart logic if we can map to common labels? 
+        // But sensors have different timestamps. Scatter plot with 'type: time' is best.
+        // Assuming user has date adapter or we include it? 
+        // The HTML includes chart.umd.min.js which bundles dependencies? Usually not date-fns adapter.
+        // Let's use simple labels logic if we group by nearest hour?
+        // No, let's just pass X as ISO string, Chart.js 4 might handle it or we use index mode with unified labels?
+        // Let's try to enable date adapter in HTML or use primitive index.
+        renderTempChart(data.temp_history, data.temp_sensors, notes, data.energy_daily);
+    }
+
     // Energy chart (daily)
     if (data.energy_daily && data.energy_daily.length > 0) {
         renderEnergyChart(data.energy_daily, notes);
@@ -421,6 +555,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (noteText) {
         noteText.addEventListener('keydown', e => {
             if (e.key === 'Enter') addNoteHandler();
+        });
+    }
+
+    // Toggle Energy Overlay
+    const toggleOverlay = document.getElementById('toggleEnergyOverlay');
+    if (toggleOverlay) {
+        toggleOverlay.addEventListener('change', () => {
+            loadStats(currentPeriod);
         });
     }
 

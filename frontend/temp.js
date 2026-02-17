@@ -4,7 +4,10 @@
 /**
  * Update temperature card with sensor readings
  */
-function updateTempCard(data) {
+function updateTempCard(data, heaterData) {
+    // Store heater status for display logic
+    if (heaterData) window.heaterStatus = heaterData;
+
     const statusBadge = document.querySelector('#tempStatus .badge');
     const errorEl = document.getElementById('tempError');
     const metricsEl = document.getElementById('tempSensorMetrics');
@@ -27,6 +30,7 @@ function updateTempCard(data) {
 
     const sensors = data.sensors || [];
     const sensorCount = data.sensor_count || 0;
+    const heaterOn = window.heaterStatus?.is_on || false;
 
     if (sensorCount === 0) {
         statusBadge.className = 'badge standby';
@@ -36,7 +40,9 @@ function updateTempCard(data) {
     }
 
     statusBadge.className = 'badge online';
-    statusBadge.textContent = `${sensorCount} Sensor${sensorCount > 1 ? 's' : ''}`;
+    // Show heater status if enabled
+    const heaterIcon = heaterOn ? ' 🔥' : '';
+    statusBadge.textContent = `${sensorCount} Sensor${sensorCount > 1 ? 's' : ''}${heaterIcon}`;
 
     // Display sensors
     let html = '';
@@ -55,84 +61,52 @@ function updateTempCard(data) {
     metricsEl.innerHTML = html;
 }
 
-async function saveTempPin() {
-    const pin = parseInt(document.getElementById('temp-onewire-pin').value);
-
-    if (pin < 0 || pin > 39) {
-        alert('Invalid pin number. Must be between 0 and 39.');
-        return;
-    }
-
-    const code = prompt('Enter authentication code:');
-    if (!code) return;
-
-    try {
-        const response = await fetch('/api/temp/pin', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pin, code })
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            alert('OneWire pin saved! Please restart ESP32 for changes to take effect.');
-        } else {
-            alert('Error: ' + (result.error || 'Unknown error'));
-        }
-    } catch (error) {
-        console.error('[TEMP] Error saving pin:', error);
-        alert('Failed to save pin configuration');
-    }
-}
-
 /**
  * Initialize temperature sensor detection
  */
 function initTempSettings() {
     const btnDetectSensors = document.getElementById('btnDetectSensors');
-    const sensorList = document.getElementById('sensorList');
-    const tempSensorCount = document.getElementById('tempSensorCount');
-    const saveTempPinBtn = document.getElementById('save-temp-pin-btn');
 
-    // Wire up save pin button
-    if (saveTempPinBtn) {
-        saveTempPinBtn.addEventListener('click', saveTempPin);
-    }
+    // Function to load sensors
+    const loadSensors = async () => {
+        const sensorList = document.getElementById('sensorList');
+        const tempSensorCount = document.getElementById('tempSensorCount');
 
-    if (btnDetectSensors) {
-        btnDetectSensors.onclick = async () => {
+        if (btnDetectSensors) {
             btnDetectSensors.textContent = '🔍 Detecting...';
             btnDetectSensors.disabled = true;
+        }
 
-            try {
-                const response = await fetch('/api/temp/detect', {
-                    method: 'POST'
-                });
-                const data = await response.json();
+        try {
+            // This now returns cached status with names if available (fast)
+            const response = await fetch('/api/temp/detect', {
+                method: 'POST'
+            });
+            const data = await response.json();
 
-                if (data.success && data.sensors) {
-                    const count = data.sensors.length;
-                    tempSensorCount.textContent = count;
+            if (data.success && data.sensors) {
+                const count = data.sensors.length;
+                if (tempSensorCount) tempSensorCount.textContent = count;
 
-                    // Render sensor list
-                    let html = '';
-                    data.sensors.forEach(sensor => {
-                        html += `
-                            <div class="sensor-row" style="margin-top: 0.75rem; padding: 0.75rem; background: var(--card-bg); border-radius: 8px;">
-                                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                    <span style="font-family: monospace; font-size: 0.8rem; color: var(--text-muted);">${sensor.address}</span>
-                                </div>
-                                <input type="text" 
-                                       class="sensor-name-input" 
-                                       data-address="${sensor.address}"
-                                       value="${sensor.name}" 
-                                       placeholder="Sensor Name"
-                                       style="width: 100%; margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-color);">
+                // Render sensor list
+                let html = '';
+                data.sensors.forEach(sensor => {
+                    html += `
+                        <div class="sensor-row" style="margin-top: 0.75rem; padding: 0.75rem; background: var(--card-bg); border-radius: 8px;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span style="font-family: monospace; font-size: 0.8rem; color: var(--text-muted);">${sensor.address}</span>
                             </div>
-                        `;
-                    });
+                            <input type="text" 
+                                   class="sensor-name-input" 
+                                   data-address="${sensor.address}"
+                                   value="${sensor.name || ''}" 
+                                   placeholder="Sensor Name"
+                                   style="width: 100%; margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-color);">
+                        </div>
+                    `;
+                });
 
+                if (sensorList) {
                     sensorList.innerHTML = html;
 
                     // Add event listeners for name inputs
@@ -156,19 +130,28 @@ function initTempSettings() {
                             }
                         });
                     });
-                } else {
-                    sensorList.innerHTML = '<p style="color: var(--text-muted); margin-top: 0.75rem;">No sensors detected. Check wiring and ESP32 connection.</p>';
-                    tempSensorCount.textContent = '0';
                 }
-            } catch (e) {
-                console.error('[TEMP] Detection failed:', e);
-                sensorList.innerHTML = '<p style="color: var(--accent-red); margin-top: 0.75rem;">Detection failed. Is ESP32 temperature monitor online?</p>';
+            } else {
+                if (sensorList) sensorList.innerHTML = '<p style="color: var(--text-muted); margin-top: 0.75rem;">No sensors detected. Check wiring and ESP32 connection.</p>';
+                if (tempSensorCount) tempSensorCount.textContent = '0';
             }
+        } catch (e) {
+            console.error('[TEMP] Detection failed:', e);
+            if (sensorList) sensorList.innerHTML = '<p style="color: var(--accent-red); margin-top: 0.75rem;">Detection failed. Is ESP32 temperature monitor online?</p>';
+        }
 
+        if (btnDetectSensors) {
             btnDetectSensors.textContent = '🔍 Detect Sensors';
             btnDetectSensors.disabled = false;
-        };
+        }
+    };
+
+    if (btnDetectSensors) {
+        btnDetectSensors.onclick = loadSensors;
     }
+
+    // Auto-load on init
+    loadSensors();
 }
 
 // Initialize temperature settings when DOM is ready

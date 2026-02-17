@@ -126,12 +126,18 @@ function formatEnergy(wh) {
  */
 function updateTimestamp(timestamp) {
     const el = document.getElementById('lastUpdate');
+    const clock = document.getElementById('serverClock');
+
+    let timeStr;
     if (timestamp) {
         const date = new Date(timestamp);
-        el.textContent = date.toLocaleTimeString();
+        timeStr = date.toLocaleTimeString();
     } else {
-        el.textContent = new Date().toLocaleTimeString();
+        timeStr = new Date().toLocaleTimeString();
     }
+
+    if (el) el.textContent = timeStr;
+    if (clock) clock.textContent = timeStr;
 }
 
 /**
@@ -710,7 +716,7 @@ function handleStatusUpdate(data) {
             updateFanCard(data.devices.fan, data.devices.wiz, data.devices.dreo);
         }
         if (typeof updateTempCard === 'function') {
-            updateTempCard(data.devices.temp);
+            updateTempCard(data.devices.temp, data.devices.heater);
         }
     }
 
@@ -1120,6 +1126,9 @@ function initSettingsModal() {
         };
     });
 
+    // Track original pin values for change detection
+    let originalPins = { exhaust: [], intake: [], tempPin: 22 };
+
     // Load current settings into form
     function loadSettingsToForm() {
         // Notifications
@@ -1135,8 +1144,44 @@ function initSettingsModal() {
 
         // Render Lists
         renderFanList('exhaust-fans-list', airflowConfig.exhaust_fans || [], 'exhaust');
-
         renderFanList('intake-fans-list', airflowConfig.intake_fans || [], 'intake');
+
+        // Store original pin values for change detection
+        originalPins.exhaust = (airflowConfig.exhaust_fans || []).map(f => f.pin || 15);
+        originalPins.intake = (airflowConfig.intake_fans || []).map(f => f.pin || 15);
+        const tempPinEl = document.getElementById('tempPin');
+        if (tempPinEl) originalPins.tempPin = parseInt(tempPinEl.value) || 22;
+
+        // Load Schedule & Heater settings from API
+        fetch('/api/light/schedule').then(r => r.json()).then(data => {
+            const el = id => document.getElementById(id);
+            if (el('lightScheduleEnabled')) el('lightScheduleEnabled').checked = data.enabled || false;
+            if (el('lightOnTime')) el('lightOnTime').value = data.on_time || '06:00';
+            if (el('lightOffTime')) el('lightOffTime').value = data.off_time || '00:00';
+        }).catch(e => console.error('[LIGHT] Failed to load schedule:', e));
+
+        // Load Heater settings & populate sensors
+        Promise.all([
+            fetch('/api/heater/settings').then(r => r.json()),
+            fetch('/api/temp/status').then(r => r.json())
+        ]).then(([heaterSettings, tempStatus]) => {
+            const select = document.getElementById('heaterSensorSelect');
+            if (select) {
+                select.innerHTML = '<option value="average">Average (All Sensors)</option>';
+                (tempStatus.sensors || []).forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.address;
+                    opt.textContent = s.name || s.address;
+                    select.appendChild(opt);
+                });
+                // Set saved value
+                select.value = heaterSettings.sensor_address || 'average';
+            }
+
+            const el = id => document.getElementById(id);
+            if (el('heaterEnabled')) el('heaterEnabled').checked = heaterSettings.enabled || false;
+            if (el('heaterNightTemp')) el('heaterNightTemp').value = heaterSettings.night_temp ?? 20;
+        }).catch(e => console.error('[HEATER] Failed to load settings:', e));
     }
 
     // Save settings from form
@@ -1179,12 +1224,80 @@ function initSettingsModal() {
         // Update local object immediately for UI updates
         airflowConfig = { ...airflowConfig, ...newAirflow };
 
+        // Check if any fan pins changed
+        const newExhaustPins = newAirflow.exhaust_fans.map(f => f.pin);
+        const newIntakePins = newAirflow.intake_fans.map(f => f.pin);
+        const fanPinsChanged =
+            JSON.stringify(newExhaustPins) !== JSON.stringify(originalPins.exhaust) ||
+            JSON.stringify(newIntakePins) !== JSON.stringify(originalPins.intake);
+
+        // Check if temp pin changed
+        const tempPinEl = document.getElementById('tempPin');
+        const newTempPin = tempPinEl ? parseInt(tempPinEl.value) || 22 : originalPins.tempPin;
+        const tempPinChanged = newTempPin !== originalPins.tempPin;
+
         // Persist to server
         fetch('/api/fan/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(airflowConfig)
         }).catch(e => console.error('Failed to save airflow settings:', e));
+
+        // Save temp pin if changed
+        if (tempPinChanged && fanAuthPin) {
+            fetch('/api/temp/pin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pin: newTempPin, code: fanAuthPin })
+            }).catch(e => console.error('Failed to save temp pin:', e));
+        }
+
+        // Show restart warning if any pins changed
+        if (fanPinsChanged || tempPinChanged) {
+            const changes = [];
+            if (fanPinsChanged) changes.push('Fan GPIO pin(s)');
+            if (tempPinChanged) changes.push('Temperature sensor pin');
+
+            setTimeout(() => {
+                alert(`⚠️ ${changes.join(' and ')} changed!\n\nYou must restart the ESP32 for pin changes to take effect.`);
+            }, 100);
+
+            // Update originals so we don't warn again without new changes
+            originalPins.exhaust = newExhaustPins;
+            originalPins.intake = newIntakePins;
+            originalPins.tempPin = newTempPin;
+        }
+
+        // Save Schedule & Heater settings
+        const lightScheduleEnabled = document.getElementById('lightScheduleEnabled');
+        const lightOnTime = document.getElementById('lightOnTime');
+        const lightOffTime = document.getElementById('lightOffTime');
+        const heaterEnabled = document.getElementById('heaterEnabled');
+        const heaterNightTemp = document.getElementById('heaterNightTemp');
+
+        if (lightScheduleEnabled) {
+            fetch('/api/light/schedule', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    enabled: lightScheduleEnabled.checked,
+                    on_time: lightOnTime?.value || '06:00',
+                    off_time: lightOffTime?.value || '00:00'
+                })
+            }).catch(e => console.error('Failed to save light schedule:', e));
+        }
+
+        if (heaterEnabled) {
+            fetch('/api/heater/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    enabled: heaterEnabled.checked,
+                    night_temp: parseFloat(heaterNightTemp?.value) || 20,
+                    sensor_address: document.getElementById('heaterSensorSelect')?.value || 'average'
+                })
+            }).catch(e => console.error('Failed to save heater settings:', e));
+        }
     }
 
     // Notification permission UI elements

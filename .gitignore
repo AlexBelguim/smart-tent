@@ -29,3 +29,5 @@ data/
 runtime_history.json
 backend/fan_settings.json
 backend/energy_history.json
+backend/heater_settings.json
+backend/light_schedule.json
