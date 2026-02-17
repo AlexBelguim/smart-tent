@@ -3,10 +3,12 @@ from .wiz_device import get_wiz_status, WizDevice
 from .dreo_device import get_dreo_status, DreoDevice
 from .tapo_device import get_tapo_status, get_tapo_device, TapoDevice
 from .fan_device import get_fan_status, get_fan_device, FanDevice
+from .temp_device import get_temp_status, get_temp_device, TempDevice
 
 __all__ = [
     'get_wiz_status', 'WizDevice',
     'get_dreo_status', 'DreoDevice', 
     'get_tapo_status', 'get_tapo_device', 'TapoDevice',
-    'get_fan_status', 'get_fan_device', 'FanDevice'
+    'get_fan_status', 'get_fan_device', 'FanDevice',
+    'get_temp_status', 'get_temp_device', 'TempDevice'
 ]

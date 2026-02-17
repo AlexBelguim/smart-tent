@@ -17,7 +17,7 @@ load_dotenv()
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.devices import get_wiz_status, get_dreo_status, get_tapo_status, get_fan_status, get_fan_device, get_tapo_device
+from backend.devices import get_wiz_status, get_dreo_status, get_tapo_status, get_fan_status, get_fan_device, get_tapo_device, get_temp_status, get_temp_device
 from backend.runtime_stats import RuntimeTracker
 from backend.push_notifications import (
     get_public_key, add_subscription, remove_subscription, send_push_notification
@@ -97,7 +97,8 @@ def get_all_device_status():
             'wiz': get_wiz_status(),
             'dreo': dreo_status,
             'tapo': get_tapo_status(),
-            'fan': get_fan_status()
+            'fan': get_fan_status(),
+            'temp': get_temp_status()
         }
     }
 
@@ -121,6 +122,18 @@ def background_update_thread():
             
             # Check humidity override and enforce fan speed
             check_fan_control(status)
+            
+            # Track temperature readings
+            temp_data = status['devices'].get('temp')
+            if temp_data and temp_data.get('available'):
+                settings = load_temp_settings()
+                sensor_map = {s['address']: s['name'] for s in settings.get('sensors', [])}
+                
+                for sensor in temp_data.get('sensors', []):
+                    if sensor.get('valid'):
+                        address = sensor['address']
+                        name = sensor_map.get(address, sensor.get('name', address))
+                        add_temp_reading(address, sensor['temp_c'], name)
             
             # Save periodically (e.g., every 60s)
             if time.time() - last_save_time > 60:
@@ -384,6 +397,17 @@ def set_fan_settings():
     """Save fan settings."""
     data = request.json
     if save_fan_settings(data):
+        # Sync all exhaust fan pins to ESP32
+        fan_device = get_fan_device()
+        if data.get('exhaust_fans'):
+            pins = [fan.get('pin', 15) for fan in data['exhaust_fans'] if fan.get('pin')]
+            if pins:
+                result = fan_device.set_pin(pins)
+                if result.get('success'):
+                    print(f"[FAN] {len(pins)} fan pin(s) synced to ESP32 (restart required)")
+                else:
+                    print(f"[FAN] Warning: Could not sync pins to ESP32: {result.get('error')}")
+        
         return jsonify(load_fan_settings())
     return jsonify({'error': 'Failed to save'}), 500
 
@@ -440,6 +464,129 @@ def health():
         'timestamp': datetime.now().isoformat(),
         'update_interval': UPDATE_INTERVAL
     })
+
+
+# ============== TEMPERATURE SENSOR ENDPOINTS ==============
+
+# Temperature settings storage file
+TEMP_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), 'temp_settings.json')
+TEMP_HISTORY_FILE = os.path.join(os.path.dirname(__file__), 'temp_history.json')
+
+def load_temp_settings():
+    """Load temperature sensor settings from file."""
+    default_settings = {
+        'pin': 22,
+        'sensor_count': 0,
+        'sensors': []
+    }
+    try:
+        if os.path.exists(TEMP_SETTINGS_FILE):
+            with open(TEMP_SETTINGS_FILE, 'r') as f:
+                import json
+                return json.load(f)
+    except Exception as e:
+        print(f'[TEMP] Failed to load settings: {e}')
+    return default_settings
+
+def save_temp_settings(settings):
+    """Save temperature sensor settings to file."""
+    try:
+        import json
+        with open(TEMP_SETTINGS_FILE, 'w') as f:
+            json.dump(settings, f, indent=2)
+        return True
+    except Exception as e:
+        print(f'[TEMP] Failed to save settings: {e}')
+        return False
+
+def load_temp_history():
+    """Load temperature history from file."""
+    try:
+        if os.path.exists(TEMP_HISTORY_FILE):
+            with open(TEMP_HISTORY_FILE, 'r') as f:
+                import json
+                return json.load(f)
+    except Exception as e:
+        print(f'[TEMP] Failed to load history: {e}')
+    return []
+
+def save_temp_history(history):
+    """Save temperature history to file."""
+    try:
+        import json
+        with open(TEMP_HISTORY_FILE, 'w') as f:
+            json.dump(history, f)
+        return True
+    except Exception as e:
+        print(f'[TEMP] Failed to save history: {e}')
+        return False
+
+def add_temp_reading(sensor_address, temp_c, sensor_name=None):
+    """Add a temperature reading to history."""
+    history = load_temp_history()
+    
+    # Add new reading
+    reading = {
+        'timestamp': datetime.now().isoformat(),
+        'address': sensor_address,
+        'name': sensor_name,
+        'temp_c': temp_c
+    }
+    history.append(reading)
+    
+    # Keep only last 7 days of data
+    from datetime import timedelta
+    cutoff = datetime.now() - timedelta(days=7)
+    history = [r for r in history if datetime.fromisoformat(r['timestamp']) > cutoff]
+    
+    save_temp_history(history)
+    return reading
+
+@app.route('/api/temp/settings')
+def get_temp_settings():
+    """Get temperature sensor settings."""
+    return jsonify(load_temp_settings())
+
+@app.route('/api/temp/settings', methods=['POST'])
+def set_temp_settings():
+    """Save temperature sensor settings."""
+    data = request.json
+    if save_temp_settings(data):
+        return jsonify(load_temp_settings())
+    return jsonify({'error': 'Failed to save'}), 500
+
+@app.route('/api/temp/status')
+def get_temp():
+    """Get temperature sensor status."""
+    return jsonify(get_temp_status())
+
+@app.route('/api/temp/detect', methods=['POST'])
+def detect_temp_sensors():
+    """Detect temperature sensors on the bus."""
+    temp = get_temp_device()
+    result = temp.detect_sensors()
+    return jsonify(result)
+
+@app.route('/api/temp/sensor/name', methods=['POST'])
+def set_temp_sensor_name():
+    
+    settings['sensors'] = sensors
+    save_temp_settings(settings)
+    
+    return jsonify(result)
+
+@app.route('/api/temp/history')
+def get_temp_history():
+    """Get temperature history."""
+    hours = int(request.args.get('hours', 24))
+    history = load_temp_history()
+    
+    # Filter by time range
+    from datetime import timedelta
+    cutoff = datetime.now() - timedelta(hours=hours)
+    filtered = [r for r in history if datetime.fromisoformat(r['timestamp']) > cutoff]
+    
+    return jsonify(filtered)
 
 
 @app.route('/stats')

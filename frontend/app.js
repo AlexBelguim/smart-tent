@@ -709,6 +709,9 @@ function handleStatusUpdate(data) {
         if (typeof updateFanCard === 'function') {
             updateFanCard(data.devices.fan, data.devices.wiz, data.devices.dreo);
         }
+        if (typeof updateTempCard === 'function') {
+            updateTempCard(data.devices.temp);
+        }
     }
 
     // Update timestamp
@@ -1051,6 +1054,10 @@ function initSettingsModal() {
             div.innerHTML = `
                 <div class="fan-props">
                     <div class="fan-prop">
+                        <label>GPIO Pin</label>
+                        <input type="number" class="fan-pin" value="${fan.pin || 15}" min="0" max="39" step="1">
+                    </div>
+                    <div class="fan-prop">
                         <label>Size (mm)</label>
                         <input type="number" class="fan-size" value="${fan.size || 150}" step="10">
                     </div>
@@ -1073,7 +1080,7 @@ function initSettingsModal() {
 
     // Attach global helpers for onclick handlers
     window.addFan = function (type) {
-        const newFan = { size: 150, min_rpm: 0, max_rpm: 2500 };
+        const newFan = { pin: 15, size: 150, min_rpm: 0, max_rpm: 2500 };
         if (type === 'exhaust') {
             if (!airflowConfig.exhaust_fans) airflowConfig.exhaust_fans = [];
             airflowConfig.exhaust_fans.push(newFan);
@@ -1151,6 +1158,7 @@ function initSettingsModal() {
             const fans = [];
             rows.forEach(row => {
                 fans.push({
+                    pin: parseInt(row.querySelector('.fan-pin').value) || 15,
                     size: parseInt(row.querySelector('.fan-size').value) || 150,
                     min_rpm: parseInt(row.querySelector('.fan-min').value) || 0,
                     max_rpm: parseInt(row.querySelector('.fan-max').value) || 2500
@@ -1309,6 +1317,7 @@ async function loadFanSettings() {
                 if (airflowConfig.exhaust_fans.length === 0 && airflowConfig.exhaust_count > 0) {
                     for (let i = 0; i < airflowConfig.exhaust_count; i++) {
                         airflowConfig.exhaust_fans.push({
+                            pin: 15,
                             size: airflowConfig.exhaust_size || 150,
                             min_rpm: airflowConfig.exhaust_min_rpm || 0,
                             max_rpm: airflowConfig.exhaust_max_rpm || 2500
@@ -1316,7 +1325,7 @@ async function loadFanSettings() {
                     }
                 } else if (airflowConfig.exhaust_fans.length === 0 && airflowConfig.exhaust_count === undefined) {
                     // Default 1 fan if total new install
-                    airflowConfig.exhaust_fans.push({ size: 150, min_rpm: 0, max_rpm: 2500 });
+                    airflowConfig.exhaust_fans.push({ pin: 15, size: 150, min_rpm: 0, max_rpm: 2500 });
                 }
             }
 
@@ -1325,6 +1334,7 @@ async function loadFanSettings() {
                 if (airflowConfig.intake_fans.length === 0 && airflowConfig.intake_count > 0) {
                     for (let i = 0; i < airflowConfig.intake_count; i++) {
                         airflowConfig.intake_fans.push({
+                            pin: 15,
                             size: airflowConfig.intake_size || 150,
                             min_rpm: airflowConfig.intake_min_rpm || 0,
                             max_rpm: airflowConfig.intake_max_rpm || 2500

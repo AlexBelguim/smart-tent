@@ -45,6 +45,7 @@
             <div class="segmented-control">
                 <button class="segmented-btn active" data-tab="general">General</button>
                 <button class="segmented-btn" data-tab="airflow">Airflow</button>
+                <button class="segmented-btn" data-tab="temperature">Temperature</button>
             </div>
 
             <!-- TAB 1: General (Notifications) -->
@@ -102,6 +103,34 @@
                     <button type="button" class="btn-add-fan" onclick="addFan('intake')">+ Add Intake Fan</button>
 
                     <p class="setting-note">Used to calculate air exchange rate & balance.</p>
+                </div>
+            </div>
+
+            <!-- TAB 3: Temperature -->
+            <div id="tab-temperature" class="settings-panel">
+                <div class="settings-form">
+                    <div class="temperature-tab" data-tab="temperature">
+                        <h3>Temperature Sensors (DS18B20)</h3>
+                        <p class="temp-info">Configure DS18B20 temperature sensors connected via OneWire protocol.</p>
+
+                        <div class="temp-settings-group">
+                            <h4>OneWire Pin Configuration</h4>
+                            <p class="setting-description">GPIO pin for temperature sensor OneWire bus (default: 22)</p>
+                            <div class="input-group">
+                                <label for="temp-onewire-pin">OneWire GPIO Pin:</label>
+                                <input type="number" id="temp-onewire-pin" min="0" max="39" value="22" step="1">
+                                <button id="save-temp-pin-btn" class="primary-btn">Save Pin</button>
+                                <span class="pin-save-note">(Requires ESP32 restart)</span>
+                            </div>
+                        </div>
+
+                        <div class="temp-settings-group">
+                            <h4>Sensor Detection & Naming</h4>
+                            <button id="detect-sensors-btn" class="primary-btn">Detect Sensors</button>
+                            <div id="sensor-list"></div>
+                        </div>
+                    </div>
+                    <p class="setting-note">Connect all DS18B20 sensors to the same OneWire bus pin.</p>
                 </div>
             </div>
             <div class="modal-actions">
@@ -361,41 +390,62 @@
                 </div>
             </div>
 
-            <!-- Camera Card (Full Width) -->
-            <div class="card card-camera" id="cameraCard">
+            <!-- Temperature Card --!>
+            <div class="card card-temperature" id="tempCard">
                 <div class="card-header">
-                    <div class="card-icon">🎥</div>
+                    <div class="card-icon">🌡️</div>
                     <div class="card-title">
-                        <h2>Camera</h2>
-                        <span class="device-type">Live Stream</span>
+                        <h2>Temperature</h2>
+                        <span class="device-type">DS18B20</span>
                     </div>
-                    <div class="status-badge" id="cameraStatusBadge">
-                        <span class="badge" id="cameraStatus">Ready</span>
+                    <div class="status-badge" id="tempStatus">
+                        <span class="badge offline">Offline</span>
                     </div>
                 </div>
                 <div class="card-body">
-                    <div class="camera-container" id="cameraContainer">
-                        <div class="camera-overlay">
-                            <button class="btn-play">▶ Watch Stream</button>
-                        </div>
-                        <div class="camera-loading" style="display: none;">
-                            <div class="spinner"></div>
-                        </div>
-                        <img id="cameraFeed" src="" alt="Stream" style="display: none;">
-                    </div>
-                </div>
+                    <div class="metric-grid" id="tempSensorMetrics">
+                        <!-- Temperature sensors will be displayed here -->
+    </div>
+    </div>
+    <div class="card-error" id="tempError" style="display: none;"></div>
+    </div>
+
+    <!-- Camera Card (Full Width) -->
+    <div class="card card-camera" id="cameraCard">
+        <div class="card-header">
+            <div class="card-icon">🎥</div>
+            <div class="card-title">
+                <h2>Camera</h2>
+                <span class="device-type">Live Stream</span>
             </div>
+            <div class="status-badge" id="cameraStatusBadge">
+                <span class="badge" id="cameraStatus">Ready</span>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="camera-container" id="cameraContainer">
+                <div class="camera-overlay">
+                    <button class="btn-play">▶ Watch Stream</button>
+                </div>
+                <div class="camera-loading" style="display: none;">
+                    <div class="spinner"></div>
+                </div>
+                <img id="cameraFeed" src="" alt="Stream" style="display: none;">
+            </div>
+        </div>
+    </div>
 
-        </main>
+    </main>
 
-        <footer class="footer">
-            <p><a href="https://github.com/AlexBelguim/smart-tent" target="_blank"
-                    style="color: inherit; text-decoration: none; opacity: 0.7;">GitHub</a></p>
-            <p class="version">v3.0</p>
-        </footer>
+    <footer class="footer">
+        <p><a href="https://github.com/AlexBelguim/smart-tent" target="_blank"
+                style="color: inherit; text-decoration: none; opacity: 0.7;">GitHub</a></p>
+        <p class="version">v3.0</p>
+    </footer>
     </div>
 
     <script src="app.js?v=3"></script>
+    <script src="temp.js?v=1"></script>
 </body>
 
 </html>

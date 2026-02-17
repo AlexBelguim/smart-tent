@@ -1,0 +1,11 @@
+{
+  "pin": 22,
+  "sensor_count": 0,
+  "sensors": [
+    {
+      "address": "28D4DE4800000006",
+      "name": "Inside",
+      "enabled": true
+    }
+  ]
+}

@@ -94,6 +94,38 @@ class FanDevice:
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
+    def set_pin(self, pins: list, code: Optional[str] = None) -> dict:
+        """Set fan PWM pins (requires ESP32 restart to take effect)."""
+        if not self.ip:
+            return {'success': False, 'error': 'ESP32_FAN_IP not configured'}
+        
+        # Ensure pins is a list
+        if not isinstance(pins, list):
+            pins = [pins]
+        
+        # Hash the provided code or use stored code
+        auth_hash = hashlib.sha256((code or self._auth_code).encode()).hexdigest()
+        
+        try:
+            response = requests.post(
+                f"{self._get_base_url()}/pin",
+                json={'pins': pins, 'auth_hash': auth_hash},
+                timeout=self.TIMEOUT
+            )
+            
+            if response.status_code == 403:
+                return {'success': False, 'error': 'Invalid authentication code'}
+            
+            response.raise_for_status()
+            return response.json()
+            
+        except requests.Timeout:
+            return {'success': False, 'error': 'Connection timeout'}
+        except requests.ConnectionError:
+            return {'success': False, 'error': 'Cannot connect to ESP32'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
     def get_schedule(self) -> dict:
         """Get schedule entries from ESP32."""
         if not self.ip:
