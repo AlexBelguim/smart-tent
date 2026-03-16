@@ -4,12 +4,14 @@ from .dreo_device import get_dreo_status, DreoDevice
 from .tapo_device import get_tapo_status, get_tapo_device, TapoDevice
 from .fan_device import get_fan_status, get_fan_device, FanDevice
 from .temp_device import get_temp_status, get_temp_device, TempDevice
+from .ec_device import get_ec_status, get_ec_device, ECDevice
 
 __all__ = [
     'get_wiz_status', 'get_wiz_light_device', 'get_wiz_heater_status', 'get_wiz_heater_device', 'WizDevice',
     'get_dreo_status', 'DreoDevice', 
     'get_tapo_status', 'get_tapo_device', 'TapoDevice',
     'get_fan_status', 'get_fan_device', 'FanDevice',
-    'get_temp_status', 'get_temp_device', 'TempDevice'
+    'get_temp_status', 'get_temp_device', 'TempDevice',
+    'get_ec_status', 'get_ec_device', 'ECDevice'
 ]
 

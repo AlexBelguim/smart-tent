@@ -17,7 +17,7 @@ load_dotenv()
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.devices import get_wiz_status, get_wiz_light_device, get_wiz_heater_status, get_wiz_heater_device, get_dreo_status, get_tapo_status, get_fan_status, get_fan_device, get_tapo_device, get_temp_status, get_temp_device
+from backend.devices import get_wiz_status, get_wiz_light_device, get_wiz_heater_status, get_wiz_heater_device, get_dreo_status, get_tapo_status, get_fan_status, get_fan_device, get_tapo_device, get_temp_status, get_temp_device, get_ec_status, get_ec_device
 from backend.runtime_stats import RuntimeTracker
 from backend.push_notifications import (
     get_public_key, add_subscription, remove_subscription, send_push_notification
@@ -42,6 +42,7 @@ stop_event = Event()
 last_wiz_state = None
 last_power_above_threshold = False
 last_water_notification_time = 0
+last_ec_water_notification_time = 0
 last_humidity_low_notification_time = 0
 POWER_THRESHOLD = 200  # Watts
 RTSP_URL = "rtsp://192.168.1.246:554/Streaming/Channels/101"
@@ -58,6 +59,7 @@ last_temp_log_time = 0
 # Settings file paths
 HEATER_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), 'heater_settings.json')
 LIGHT_SCHEDULE_FILE = os.path.join(os.path.dirname(__file__), 'light_schedule.json')
+EC_HISTORY_FILE = os.path.join(os.path.dirname(__file__), 'ec_history.json')
 
 
 
@@ -123,14 +125,15 @@ def get_all_device_status():
             'dreo': dreo_status,
             'tapo': get_tapo_status(),
             'fan': get_fan_status(),
-            'temp': get_temp_status_with_names()
+            'temp': get_temp_status_with_names(),
+            'ec': get_ec_status()
         }
     }
 
 
 def background_update_thread():
     """Background thread that pushes updates to all clients."""
-    global last_save_time, last_wiz_state, last_power_above_threshold, last_water_notification_time, last_heater_check_time
+    global last_save_time, last_wiz_state, last_power_above_threshold, last_water_notification_time, last_heater_check_time, last_ec_water_notification_time
     print(f"[INFO] Background update thread started (every {UPDATE_INTERVAL}s)")
     
     while not stop_event.is_set():
@@ -169,6 +172,13 @@ def background_update_thread():
                         name = sensor_map.get(address, sensor.get('name', address))
                         add_temp_reading(address, sensor['temp_c'], name)
             
+            # Track EC history (every 1 hour roughly to limit size, or just handle inside specific interval)
+            # We'll just append and truncate like temp, but done every time for resolution (or we can throttle it)
+            ec_data = status['devices'].get('ec')
+            if ec_data and ec_data.get('available'):
+                # Log EC reading
+                add_ec_reading(ec_data.get('ec_us_cm', 0), ec_data.get('raw_adc', 0))
+
             # Save periodically (e.g., every 60s)
             if time.time() - last_save_time > 60:
                 runtime_tracker.save()
@@ -246,6 +256,21 @@ def check_push_notifications(status):
                         pass  # Push failed, continue silently
                     last_humidity_low_notification_time = now
 
+    # Water runout alert from ESP32 EC sensor
+    ec_data = devices.get('ec', {})
+    if ec_data.get('available') and ec_data.get('water_empty'):
+        now = time.time()
+        # Cooldown: 4 hours
+        if now - last_ec_water_notification_time > 4 * 60 * 60:
+            try:
+                send_push_notification(
+                    "🚱 Water Runout",
+                    "The water level has dropped below the minimum threshold (Sensor ADC < 150).",
+                    "water-runout"
+                )
+            except Exception as e:
+                pass
+            last_ec_water_notification_time = now
 
 def check_fan_control(status):
     """Check humidity and grow lights to strictly enforce fan speed."""
@@ -526,6 +551,46 @@ def get_fan():
     """Get PWM fan status."""
     return jsonify(get_fan_status())
 
+@app.route('/api/ec')
+def get_ec():
+    """Get EC and water runtime status."""
+    return jsonify(get_ec_status())
+
+@app.route('/api/ec/kfactor', methods=['POST'])
+def set_ec_kfactor():
+    """Set EC K-Factor (requires auth code)."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    
+    kfactor = data.get('kfactor')
+    code = data.get('code')
+    
+    if kfactor is None:
+        return jsonify({'error': 'kfactor required'}), 400
+    if not code:
+        return jsonify({'error': 'Authentication code required'}), 401
+    
+    ec_dev = get_ec_device()
+    result = ec_dev.set_kfactor(float(kfactor), code)
+    
+    if result.get('success'):
+        return jsonify(result)
+    else:
+        status_code = 403 if 'Invalid' in result.get('error', '') else 500
+        return jsonify(result), status_code
+
+@app.route('/api/ec/history')
+def api_get_ec_history():
+    """Get historic EC data."""
+    hours = int(request.args.get('hours', 168)) # 7 days default
+    history = load_ec_history()
+    
+    from datetime import timedelta
+    cutoff = datetime.now() - timedelta(hours=hours)
+    filtered = [r for r in history if datetime.fromisoformat(r['timestamp']) > cutoff]
+    
+    return jsonify(filtered)
 
 @app.route('/api/fan/speed', methods=['POST'])
 def set_fan_speed():
@@ -659,6 +724,54 @@ def verify_fan_auth():
     is_valid = fan.verify_auth(data['code'])
     
     return jsonify({'valid': is_valid}), 200 if is_valid else 403
+
+def load_ec_history():
+    """Load EC history from file."""
+    try:
+        if os.path.exists(EC_HISTORY_FILE):
+            import json
+            with open(EC_HISTORY_FILE, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f'[EC] Failed to load history: {e}')
+    return []
+
+def save_ec_history(history):
+    """Save EC history to file."""
+    try:
+        import json
+        with open(EC_HISTORY_FILE, 'w') as f:
+            json.dump(history, f)
+        return True
+    except Exception as e:
+        print(f'[EC] Failed to save history: {e}')
+        return False
+
+def add_ec_reading(ec_value, raw_adc):
+    """Add an EC reading to history."""
+    # We don't want to log every 5 seconds, let's keep it to 1 per hour or minute.
+    # We can check the last entry timestamp.
+    history = load_ec_history()
+    
+    if len(history) > 0:
+        last_entry = datetime.fromisoformat(history[-1]['timestamp'])
+        if (datetime.now() - last_entry).total_seconds() < 900: # Log every 15 minutes max
+            return history[-1]
+            
+    reading = {
+        'timestamp': datetime.now().isoformat(),
+        'ec_value': ec_value,
+        'raw_adc': raw_adc
+    }
+    history.append(reading)
+    
+    # Keep only last 14 days
+    from datetime import timedelta
+    cutoff = datetime.now() - timedelta(days=14)
+    history = [r for r in history if datetime.fromisoformat(r['timestamp']) > cutoff]
+    
+    save_ec_history(history)
+    return reading
 
 @app.route('/api/health')
 def health():
