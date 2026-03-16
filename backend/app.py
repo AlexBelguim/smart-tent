@@ -43,6 +43,7 @@ last_wiz_state = None
 last_power_above_threshold = False
 last_water_notification_time = 0
 last_ec_water_notification_time = 0
+last_ec_measure_time = 0
 last_humidity_low_notification_time = 0
 POWER_THRESHOLD = 200  # Watts
 RTSP_URL = "rtsp://192.168.1.246:554/Streaming/Channels/101"
@@ -60,6 +61,7 @@ last_temp_log_time = 0
 HEATER_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), 'heater_settings.json')
 LIGHT_SCHEDULE_FILE = os.path.join(os.path.dirname(__file__), 'light_schedule.json')
 EC_HISTORY_FILE = os.path.join(os.path.dirname(__file__), 'ec_history.json')
+EC_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), 'ec_settings.json')
 
 
 
@@ -133,7 +135,7 @@ def get_all_device_status():
 
 def background_update_thread():
     """Background thread that pushes updates to all clients."""
-    global last_save_time, last_wiz_state, last_power_above_threshold, last_water_notification_time, last_heater_check_time, last_ec_water_notification_time
+    global last_save_time, last_wiz_state, last_power_above_threshold, last_water_notification_time, last_heater_check_time, last_ec_water_notification_time, last_ec_measure_time
     print(f"[INFO] Background update thread started (every {UPDATE_INTERVAL}s)")
     
     while not stop_event.is_set():
@@ -172,12 +174,18 @@ def background_update_thread():
                         name = sensor_map.get(address, sensor.get('name', address))
                         add_temp_reading(address, sensor['temp_c'], name)
             
-            # Track EC history (every 1 hour roughly to limit size, or just handle inside specific interval)
-            # We'll just append and truncate like temp, but done every time for resolution (or we can throttle it)
-            ec_data = status['devices'].get('ec')
-            if ec_data and ec_data.get('available'):
-                # Log EC reading
-                add_ec_reading(ec_data.get('ec_us_cm', 0), ec_data.get('raw_adc', 0))
+            # Check if it's time to trigger an EC physical measurement
+            now = time.time()
+            ec_settings = load_ec_settings()
+            ec_interval_mins = int(ec_settings.get('interval', 15))
+            
+            if now - last_ec_measure_time > ec_interval_mins * 60:
+                ec_dev = get_ec_device()
+                ec_result = ec_dev.trigger_measurement()
+                if ec_result.get('success'):
+                    # The response is the new status, log the reading
+                    add_ec_reading(ec_result.get('ec_us_cm', 0), ec_result.get('raw_adc', 0))
+                last_ec_measure_time = now
 
             # Save periodically (e.g., every 60s)
             if time.time() - last_save_time > 60:
@@ -580,6 +588,46 @@ def set_ec_kfactor():
         status_code = 403 if 'Invalid' in result.get('error', '') else 500
         return jsonify(result), status_code
 
+@app.route('/api/ec/settings', methods=['GET', 'POST'])
+def api_ec_settings():
+    """Get or save EC settings like measurement interval."""
+    if request.method == 'GET':
+        return jsonify(load_ec_settings())
+        
+    data = request.json
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+        
+    # Enforce Auth code for changing interval
+    code = data.get('code')
+    if not code:
+        return jsonify({'error': 'Authentication code required'}), 401
+    
+    # We verify auth code simply by assuming any fan verification passes
+    # or relying on ECDevice's verify auth endpoint if needed, but since it's backend:
+    esp32_auth_hash = get_ec_device().verify_auth(code) 
+    
+    # Alternatively we can just use the backend env FAN_AUTH_CODE
+    if hashlib.sha256(code.encode()).hexdigest() != hashlib.sha256(os.getenv('FAN_AUTH_CODE', '4444').encode()).hexdigest():
+        return jsonify({'error': 'Invalid authentication code'}), 403
+    
+    if save_ec_settings(data):
+        return jsonify(load_ec_settings())
+    return jsonify({'error': 'Failed to save'}), 500
+
+@app.route('/api/ec/measure', methods=['POST'])
+def trigger_ec_measure():
+    """Trigger a physical 5-sample measurement burst on the ESP32."""
+    ec_dev = get_ec_device()
+    result = ec_dev.trigger_measurement()
+    
+    if result.get('success'):
+        # Log the newly acquired reading
+        add_ec_reading(result.get('ec_us_cm', 0), result.get('raw_adc', 0))
+        return jsonify(result)
+    else:
+        return jsonify(result), 500
+
 @app.route('/api/ec/history')
 def api_get_ec_history():
     """Get historic EC data."""
@@ -745,6 +793,30 @@ def save_ec_history(history):
         return True
     except Exception as e:
         print(f'[EC] Failed to save history: {e}')
+        return False
+
+def load_ec_settings():
+    """Load EC settings from file."""
+    default_settings = {'interval': 15}
+    try:
+        if os.path.exists(EC_SETTINGS_FILE):
+            import json
+            with open(EC_SETTINGS_FILE, 'r') as f:
+                saved = json.load(f)
+                return {**default_settings, **saved}
+    except Exception as e:
+        print(f'[EC] Failed to load settings: {e}')
+    return default_settings
+
+def save_ec_settings(settings):
+    """Save EC settings to file."""
+    try:
+        import json
+        with open(EC_SETTINGS_FILE, 'w') as f:
+            json.dump(settings, f)
+        return True
+    except Exception as e:
+        print(f'[EC] Failed to save settings: {e}')
         return False
 
 def add_ec_reading(ec_value, raw_adc):

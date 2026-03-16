@@ -58,6 +58,29 @@ class ECDevice:
                 'error': f'[EC] {str(e)}',
                 'ip': self.ip
             }
+            
+    def trigger_measurement(self) -> dict:
+        """Trigger an on-demand 5-sample burst measurement on ESP32."""
+        if not self.ip:
+            return {'success': False, 'error': 'ESP32_EC_IP not configured'}
+            
+        try:
+            # High timeout because 5 samples * 1sec delay = 5 seconds on ESP32
+            response = requests.post(
+                f"{self._get_base_url()}/measure",
+                timeout=15 
+            )
+            response.raise_for_status()
+            data = response.json()
+            data['success'] = True
+            return data
+            
+        except requests.Timeout:
+            return {'success': False, 'error': 'Measurement timeout (took > 15s)'}
+        except requests.ConnectionError:
+            return {'success': False, 'error': 'Cannot connect to ESP32'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
     
     def set_kfactor(self, kfactor: float, code: Optional[str] = None) -> dict:
         """Set K-Factor on ESP32."""

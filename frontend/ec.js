@@ -15,6 +15,18 @@ async function fetchStatus() {
     }
 }
 
+async function fetchSettings() {
+    try {
+        const response = await fetch('/api/ec/settings');
+        const data = await response.json();
+        if (data.interval) {
+            document.getElementById('newIntervalInput').value = data.interval;
+        }
+    } catch (e) {
+        console.error("Failed to fetch EC settings", e);
+    }
+}
+
 let currentHistoryHours = 168;
 
 async function fetchHistory(hours) {
@@ -56,6 +68,31 @@ function updateCard(data) {
         document.getElementById('waterValue').style.fontWeight = 'bold';
     } else {
         document.getElementById('waterValue').style.color = 'inherit';
+    }
+}
+
+async function forceMeasurement() {
+    const btn = document.getElementById('btnTestNow');
+    const originalText = btn.textContent;
+    btn.textContent = 'Testing (10s)...';
+    btn.disabled = true;
+    
+    try {
+        const response = await fetch('/api/ec/measure', { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+            updateCard(data);
+            fetchHistory(); // refresh the graph with the new point
+        } else {
+            console.error("Measurement failed:", data.error);
+            alert("Measurement failed: " + data.error);
+        }
+    } catch (e) {
+        console.error("Measurement request failed", e);
+        alert("Failed to reach server for measurement.");
+    } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
     }
 }
 
@@ -154,9 +191,10 @@ function closePinModal() {
     document.getElementById('pinModal').style.display = 'none';
 }
 
-async function submitKFactor() {
+async function submitSettings() {
     const pin = document.getElementById('pinInput').value;
     const newKFactor = parseFloat(document.getElementById('newKFactorInput').value);
+    const newInterval = parseInt(document.getElementById('newIntervalInput').value);
     
     if (!pin || pin.length < 4) {
         document.getElementById('pinError').textContent = 'Enter 4-digit PIN';
@@ -164,35 +202,48 @@ async function submitKFactor() {
         return;
     }
     
-    if (isNaN(newKFactor)) {
-        alert("Enter a valid K-Factor");
+    if (isNaN(newKFactor) || isNaN(newInterval) || newInterval < 1) {
+        alert("Enter a valid K-Factor and Interval");
         return;
     }
 
     try {
-        const response = await fetch('/api/ec/kfactor', {
+        // Save K-Factor to ESP
+        let kFactorSuccess = true;
+        const kRes = await fetch('/api/ec/kfactor', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                kfactor: newKFactor,
-                code: pin
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kfactor: newKFactor, code: pin })
         });
-
-        if (response.status === 403) {
+        
+        if (kRes.status === 403) {
             document.getElementById('pinError').textContent = 'Invalid PIN';
             document.getElementById('pinError').style.display = 'block';
             return;
         }
+        if (!kRes.ok) kFactorSuccess = false;
 
-        if (response.ok) {
+        // Save Interval to Backend
+        let intervalSuccess = true;
+        const iRes = await fetch('/api/ec/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ interval: newInterval, code: pin })
+        });
+        
+        if (iRes.status === 403) {
+            document.getElementById('pinError').textContent = 'Invalid PIN';
+            document.getElementById('pinError').style.display = 'block';
+            return;
+        }
+        if (!iRes.ok) intervalSuccess = false;
+
+
+        if (kFactorSuccess && intervalSuccess) {
             closePinModal();
-            fetchStatus(); // Refresh to see the new K-Factor
+            fetchStatus();
         } else {
-            const data = await response.json();
-            alert("Error: " + data.error);
+            alert("Error saving one or more settings!");
         }
     } catch (e) {
         console.error(e);
@@ -203,6 +254,7 @@ async function submitKFactor() {
 document.addEventListener('DOMContentLoaded', () => {
     fetchStatus();
     fetchHistory();
+    fetchSettings();
     
     // Auto refresh status every 5 seconds
     setInterval(fetchStatus, 5000);
@@ -224,7 +276,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // UI Events
-    document.getElementById('btnChangeKFactor').addEventListener('click', showPinModal);
+    document.getElementById('btnChangeSettings').addEventListener('click', showPinModal);
     document.getElementById('btnPinCancel').addEventListener('click', closePinModal);
-    document.getElementById('btnPinSubmit').addEventListener('click', submitKFactor);
+    document.getElementById('btnPinSubmit').addEventListener('click', submitSettings);
+    document.getElementById('btnTestNow').addEventListener('click', forceMeasurement);
 });

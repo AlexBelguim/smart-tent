@@ -62,6 +62,7 @@ void setup() {
 
   // Define Web Server Endpoints
   server.on("/status", HTTP_GET, handleStatus);
+  server.on("/measure", HTTP_POST, handleMeasure);
   server.on("/kfactor", HTTP_POST, handleUpdateKFactor);
   server.on("/auth", HTTP_POST, handleAuth);
   
@@ -71,22 +72,46 @@ void setup() {
 
 void loop() {
   server.handleClient();
+  delay(10); // Small delay to prevent watchdog issues
+}
 
-  // Take a reading every 3 seconds
-  if (millis() - lastReadingTime >= 3000) {
-    latestEC = readEC(&latestRawADC);
-    lastReadingTime = millis();
+void handleMeasure() {
+  float sumEC = 0;
+  long sumRaw = 0;
+  int burstSamples = 5;
 
-    // 1. Water Level Check (Side Bolts at 11cm)
-    if (latestRawADC < 150) { 
-      // Serial.println("!!! CRITICAL: WATER BELOW 11CM - AIR GAP THREATENED !!!");
-    } 
-    // 2. EC Reading & Health Status
-    else {
-      // Serial.print("RAW ADC: "); Serial.print(latestRawADC);
-      // Serial.print(" | EC: "); Serial.print(latestEC); Serial.println(" uS/cm");
-    }
+  Serial.println("--- Starting On-Demand Burst Read ---");
+
+  for (int i = 0; i < burstSamples; i++) {
+    int currentRaw = 0;
+    float currentEC = readEC(&currentRaw);
+    
+    sumEC += currentEC;
+    sumRaw += currentRaw;
+    
+    Serial.print("Sample "); Serial.print(i + 1);
+    Serial.print(": "); Serial.print(currentEC); Serial.println(" uS/cm");
+    
+    delay(1000); // 1 second between samples in the burst
   }
+
+  latestEC = sumEC / burstSamples;
+  latestRawADC = sumRaw / burstSamples;
+
+  Serial.println("------------------------------------");
+  Serial.print("FINAL AVERAGE EC: "); Serial.print(latestEC); 
+  Serial.println(" uS/cm");
+  Serial.print("AVERAGE RAW ADC: "); Serial.println(latestRawADC);
+  
+  // Health Status Check
+  if (latestRawADC < 150) Serial.println(">> STATUS: WATER LOW (ADC < 150)");
+  else if (latestEC > 2400) Serial.println(">> STATUS: Thirsty! (EC High)");
+  else if (latestEC < 1600) Serial.println(">> STATUS: Hungry! (EC Low)");
+  else Serial.println(">> STATUS: Optimal Zone");
+  Serial.println("------------------------------------");
+
+  // Re-use status JSON generation logic to return newest reading
+  handleStatus();
 }
 
 float readEC(int* outRaw) {
