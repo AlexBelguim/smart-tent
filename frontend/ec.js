@@ -15,10 +15,12 @@ async function fetchStatus() {
     }
 }
 
-async function fetchHistory() {
+let currentHistoryHours = 168;
+
+async function fetchHistory(hours) {
+    if (hours) currentHistoryHours = hours;
     try {
-        // Fetch last 7 days (168 hours)
-        const response = await fetch('/api/ec/history?hours=168');
+        const response = await fetch(`/api/ec/history?hours=${currentHistoryHours}`);
         const history = await response.json();
         updateChart(history);
     } catch (e) {
@@ -106,6 +108,7 @@ function updateChart(history) {
                     },
                     y: {
                         beginAtZero: true,
+                        suggestedMax: 2000,
                         grid: {
                             color: 'rgba(255, 255, 255, 0.05)'
                         },
@@ -197,8 +200,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // Auto refresh status every 5 seconds
     setInterval(fetchStatus, 5000);
     // Refresh history graph every 5 minutes
-    setInterval(fetchHistory, 5 * 60 * 1000);
+    setInterval(() => fetchHistory(), 5 * 60 * 1000);
     
+    // Period buttons
+    document.querySelectorAll('.period-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            // Update active state
+            document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            
+            // Fetch new data
+            const hours = parseInt(e.target.dataset.hours);
+            document.getElementById('graphSubtitle').textContent = `Last ${e.target.textContent}`;
+            fetchHistory(hours);
+        });
+    });
+
     // UI Events
     document.getElementById('btnChangeKFactor').addEventListener('click', showPinModal);
     document.getElementById('btnPinCancel').addEventListener('click', closePinModal);
