@@ -67,8 +67,13 @@ function updateChart(history) {
         y: Math.max(0, item.ec_value) // Filter negative/invalid if any
     }));
 
+    const now = new Date();
+    const past = new Date(now.getTime() - (currentHistoryHours * 60 * 60 * 1000));
+
     if (ecChart) {
         ecChart.data.datasets[0].data = chartData;
+        ecChart.options.scales.x.min = past;
+        ecChart.options.scales.x.max = now;
         ecChart.update();
     } else {
         ecChart = new Chart(ctx, {
@@ -96,6 +101,8 @@ function updateChart(history) {
                 scales: {
                     x: {
                         type: 'time',
+                        min: past,
+                        max: now,
                         time: {
                             tooltipFormat: 'MMM d, h:mm a'
                         },
