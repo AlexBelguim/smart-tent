@@ -1180,6 +1180,7 @@ function initSettingsModal() {
 
             const el = id => document.getElementById(id);
             if (el('heaterEnabled')) el('heaterEnabled').checked = heaterSettings.enabled || false;
+            if (el('heaterDayTemp')) el('heaterDayTemp').value = heaterSettings.day_temp ?? 22;
             if (el('heaterNightTemp')) el('heaterNightTemp').value = heaterSettings.night_temp ?? 20;
         }).catch(e => console.error('[HEATER] Failed to load settings:', e));
     }
@@ -1273,6 +1274,7 @@ function initSettingsModal() {
         const lightOnTime = document.getElementById('lightOnTime');
         const lightOffTime = document.getElementById('lightOffTime');
         const heaterEnabled = document.getElementById('heaterEnabled');
+        const heaterDayTemp = document.getElementById('heaterDayTemp');
         const heaterNightTemp = document.getElementById('heaterNightTemp');
 
         if (lightScheduleEnabled) {
@@ -1293,6 +1295,7 @@ function initSettingsModal() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     enabled: heaterEnabled.checked,
+                    day_temp: parseFloat(heaterDayTemp?.value) || 22,
                     night_temp: parseFloat(heaterNightTemp?.value) || 20,
                     sensor_address: document.getElementById('heaterSensorSelect')?.value || 'average'
                 })

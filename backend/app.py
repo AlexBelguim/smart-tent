@@ -53,7 +53,7 @@ humidity_override_active = False
 
 # Heater control state
 last_heater_check_time = 0
-HEATER_CHECK_INTERVAL = 5 * 60  # 5 minutes
+HEATER_CHECK_INTERVAL = 15 * 60  # 15 minutes
 TEMP_LOG_INTERVAL = 5 * 60      # 5 minutes
 last_temp_log_time = 0
 
@@ -358,7 +358,7 @@ def check_fan_control(status):
 
 def load_heater_settings():
     """Load heater settings from file."""
-    defaults = {'enabled': False, 'night_temp': 20, 'sensor_address': None}
+    defaults = {'enabled': False, 'day_temp': 22, 'night_temp': 20, 'sensor_address': None}
     try:
         if os.path.exists(HEATER_SETTINGS_FILE):
             import json
@@ -410,7 +410,7 @@ def save_light_schedule(new_settings):
 
 
 def check_heater_control(status):
-    """Check temperature and toggle heater during night mode (every 5 min)."""
+    """Check temperature and toggle heater in both day and night modes (every 15 min)."""
     global last_heater_check_time
     
     now = time.time()
@@ -419,7 +419,7 @@ def check_heater_control(status):
     if not heater_settings.get('enabled'):
         return
     
-    # Only check every HEATER_CHECK_INTERVAL (5 minutes)
+    # Only check every HEATER_CHECK_INTERVAL (15 minutes hysteresis)
     if now - last_heater_check_time < HEATER_CHECK_INTERVAL:
         return
     last_heater_check_time = now
@@ -429,17 +429,17 @@ def check_heater_control(status):
     temp_data = devices.get('temp', {})
     heater = devices.get('heater', {})
     
-    # Only control heater during night (lights OFF)
+    # Determine day/night based on grow lights
     is_day = wiz.get('available') and wiz.get('is_on')
-    if is_day:
-        # Day mode: ensure heater is ON (as desired)
-        if heater.get('available') and not heater.get('is_on'):
-            heater_device = get_wiz_heater_device()
-            result = heater_device.turn_on()
-            print(f"[HEATER] Day mode - turning heater ON: {result}")
-        return
+    mode_label = 'Day' if is_day else 'Night'
     
-    # Night mode: check temperature
+    # Pick target temp based on mode
+    if is_day:
+        target_temp = heater_settings.get('day_temp', 22)
+    else:
+        target_temp = heater_settings.get('night_temp', 20)
+    
+    # Check temperature sensor availability
     if not temp_data.get('available'):
         return
     
@@ -452,7 +452,7 @@ def check_heater_control(status):
         specific_sensor = next((s for s in sensors if s['address'] == target_sensor_addr), None)
         if specific_sensor and specific_sensor.get('valid'):
             avg_temp = specific_sensor['temp_c']
-            print(f"[HEATER] Using sensor {specific_sensor.get('name', target_sensor_addr)}: {avg_temp}°C")
+            print(f"[HEATER] {mode_label} mode — Using sensor {specific_sensor.get('name', target_sensor_addr)}: {avg_temp}°C")
         else:
             print(f"[HEATER] Targeted sensor {target_sensor_addr} not found or invalid.")
             return
@@ -463,20 +463,19 @@ def check_heater_control(status):
             return
         avg_temp = sum(valid_temps) / len(valid_temps)
 
-    target_temp = heater_settings.get('night_temp', 20)
     heater_device = get_wiz_heater_device()
     
     # Hysteresis: turn on 0.5° below target, off 0.5° above
     if avg_temp < target_temp - 0.5:
         if not (heater.get('available') and heater.get('is_on')):
             result = heater_device.turn_on()
-            print(f"[HEATER] Temp {avg_temp:.1f}°C < {target_temp - 0.5}°C → ON: {result}")
+            print(f"[HEATER] {mode_label} | Temp {avg_temp:.1f}°C < {target_temp - 0.5}°C → ON: {result}")
     elif avg_temp > target_temp + 0.5:
         if heater.get('available') and heater.get('is_on'):
             result = heater_device.turn_off()
-            print(f"[HEATER] Temp {avg_temp:.1f}°C > {target_temp + 0.5}°C → OFF: {result}")
+            print(f"[HEATER] {mode_label} | Temp {avg_temp:.1f}°C > {target_temp + 0.5}°C → OFF: {result}")
     else:
-        print(f"[HEATER] Temp {avg_temp:.1f}°C within range of {target_temp}°C, no action")
+        print(f"[HEATER] {mode_label} | Temp {avg_temp:.1f}°C within range of {target_temp}°C, no action")
 
 
 def check_light_schedule(status):
