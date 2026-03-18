@@ -107,10 +107,21 @@ function updateChart(history) {
     const now = new Date();
     const past = new Date(now.getTime() - (currentHistoryHours * 60 * 60 * 1000));
 
+    // Dynamic Y-axis: ±200 from the data extremes
+    const ecValues = chartData.map(d => d.y).filter(v => v > 0);
+    let yMin = 0;
+    let yMax = 2000;
+    if (ecValues.length > 0) {
+        yMin = Math.max(0, Math.min(...ecValues) - 200);
+        yMax = Math.max(...ecValues) + 200;
+    }
+
     if (ecChart) {
         ecChart.data.datasets[0].data = chartData;
         ecChart.options.scales.x.min = past;
         ecChart.options.scales.x.max = now;
+        ecChart.options.scales.y.min = yMin;
+        ecChart.options.scales.y.max = yMax;
         ecChart.update();
     } else {
         ecChart = new Chart(ctx, {
@@ -151,8 +162,8 @@ function updateChart(history) {
                         }
                     },
                     y: {
-                        beginAtZero: true,
-                        suggestedMax: 2000,
+                        min: yMin,
+                        max: yMax,
                         grid: {
                             color: 'rgba(255, 255, 255, 0.05)'
                         },
