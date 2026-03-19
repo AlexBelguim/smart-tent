@@ -51,9 +51,7 @@ RTSP_URL = "rtsp://192.168.1.246:554/Streaming/Channels/101"
 # Humidity override state
 humidity_override_active = False
 
-# Heater control state
-last_heater_check_time = 0
-HEATER_CHECK_INTERVAL = 15 * 60  # 15 minutes
+# Heater control state (no interval — checks every polling cycle)
 TEMP_LOG_INTERVAL = 5 * 60      # 5 minutes
 last_temp_log_time = 0
 
@@ -135,7 +133,7 @@ def get_all_device_status():
 
 def background_update_thread():
     """Background thread that pushes updates to all clients."""
-    global last_save_time, last_wiz_state, last_power_above_threshold, last_water_notification_time, last_heater_check_time, last_ec_water_notification_time, last_ec_measure_time
+    global last_save_time, last_wiz_state, last_power_above_threshold, last_water_notification_time, last_ec_water_notification_time, last_ec_measure_time
     print(f"[INFO] Background update thread started (every {UPDATE_INTERVAL}s)")
     
     while not stop_event.is_set():
@@ -153,7 +151,7 @@ def background_update_thread():
             # Check humidity override and enforce fan speed
             check_fan_control(status)
             
-            # Check heater control (every 5 min during night)
+            # Check heater control (every cycle)
             check_heater_control(status)
             
             # Log temperature history (every 5 min)
@@ -358,7 +356,7 @@ def check_fan_control(status):
 
 def load_heater_settings():
     """Load heater settings from file."""
-    defaults = {'enabled': False, 'day_temp': 22, 'night_temp': 20, 'sensor_address': None}
+    defaults = {'enabled': False, 'day_temp': 22, 'night_temp': 20, 'sensor_addresses': []}
     try:
         if os.path.exists(HEATER_SETTINGS_FILE):
             import json
@@ -410,19 +408,17 @@ def save_light_schedule(new_settings):
 
 
 def check_heater_control(status):
-    """Check temperature and toggle heater in both day and night modes (every 15 min)."""
-    global last_heater_check_time
+    """Check temperature and toggle heater in both day and night modes.
     
-    now = time.time()
+    Hysteresis:
+      - Turn ON when temp drops 0.5°C below target
+      - Turn OFF when temp reaches 2°C above target
+    Runs every polling cycle (no delay).
+    """
     heater_settings = load_heater_settings()
     
     if not heater_settings.get('enabled'):
         return
-    
-    # Only check every HEATER_CHECK_INTERVAL (15 minutes hysteresis)
-    if now - last_heater_check_time < HEATER_CHECK_INTERVAL:
-        return
-    last_heater_check_time = now
     
     devices = status.get('devices', {})
     wiz = devices.get('wiz', {})
@@ -445,37 +441,45 @@ def check_heater_control(status):
     
     sensors = temp_data.get('sensors', [])
     avg_temp = 0
-    target_sensor_addr = heater_settings.get('sensor_address')
     
-    # If a specific sensor is selected, use only that one
-    if target_sensor_addr and target_sensor_addr != 'average':
-        specific_sensor = next((s for s in sensors if s['address'] == target_sensor_addr), None)
-        if specific_sensor and specific_sensor.get('valid'):
-            avg_temp = specific_sensor['temp_c']
-            print(f"[HEATER] {mode_label} mode — Using sensor {specific_sensor.get('name', target_sensor_addr)}: {avg_temp}°C")
-        else:
-            print(f"[HEATER] Targeted sensor {target_sensor_addr} not found or invalid.")
+    # Multi-sensor selection: use selected sensors, or all if none selected
+    selected_addresses = heater_settings.get('sensor_addresses', [])
+    
+    # Migrate old single sensor_address to new format
+    if not selected_addresses and heater_settings.get('sensor_address'):
+        old_addr = heater_settings.get('sensor_address')
+        if old_addr and old_addr != 'average':
+            selected_addresses = [old_addr]
+    
+    if selected_addresses:
+        # Average of selected sensors
+        selected_temps = [
+            s['temp_c'] for s in sensors
+            if s.get('valid') and s.get('address') in selected_addresses
+        ]
+        if not selected_temps:
+            print(f"[HEATER] No valid readings from selected sensors.")
             return
+        avg_temp = sum(selected_temps) / len(selected_temps)
     else:
-        # Use average of all valid sensors
+        # No sensors selected — use average of all valid sensors
         valid_temps = [s['temp_c'] for s in sensors if s.get('valid')]
         if not valid_temps:
             return
         avg_temp = sum(valid_temps) / len(valid_temps)
 
     heater_device = get_wiz_heater_device()
+    is_heater_on = heater.get('available') and heater.get('is_on')
     
-    # Hysteresis: turn on 0.5° below target, off 0.5° above
+    # Hysteresis: turn ON at target−0.5°C, turn OFF at target+2°C
     if avg_temp < target_temp - 0.5:
-        if not (heater.get('available') and heater.get('is_on')):
+        if not is_heater_on:
             result = heater_device.turn_on()
-            print(f"[HEATER] {mode_label} | Temp {avg_temp:.1f}°C < {target_temp - 0.5}°C → ON: {result}")
-    elif avg_temp > target_temp + 0.5:
-        if heater.get('available') and heater.get('is_on'):
+            print(f"[HEATER] {mode_label} | {avg_temp:.1f}°C < {target_temp - 0.5:.1f}°C → ON: {result}")
+    elif avg_temp > target_temp + 2.0:
+        if is_heater_on:
             result = heater_device.turn_off()
-            print(f"[HEATER] {mode_label} | Temp {avg_temp:.1f}°C > {target_temp + 0.5}°C → OFF: {result}")
-    else:
-        print(f"[HEATER] {mode_label} | Temp {avg_temp:.1f}°C within range of {target_temp}°C, no action")
+            print(f"[HEATER] {mode_label} | {avg_temp:.1f}°C > {target_temp + 2.0:.1f}°C → OFF: {result}")
 
 
 def check_light_schedule(status):

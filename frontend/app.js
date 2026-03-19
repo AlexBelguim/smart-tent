@@ -1160,22 +1160,33 @@ function initSettingsModal() {
             if (el('lightOffTime')) el('lightOffTime').value = data.off_time || '00:00';
         }).catch(e => console.error('[LIGHT] Failed to load schedule:', e));
 
-        // Load Heater settings & populate sensors
+        // Load Heater settings & populate sensor checkboxes
         Promise.all([
             fetch('/api/heater/settings').then(r => r.json()),
             fetch('/api/temp/status').then(r => r.json())
         ]).then(([heaterSettings, tempStatus]) => {
-            const select = document.getElementById('heaterSensorSelect');
-            if (select) {
-                select.innerHTML = '<option value="average">Average (All Sensors)</option>';
-                (tempStatus.sensors || []).forEach(s => {
-                    const opt = document.createElement('option');
-                    opt.value = s.address;
-                    opt.textContent = s.name || s.address;
-                    select.appendChild(opt);
-                });
-                // Set saved value
-                select.value = heaterSettings.sensor_address || 'average';
+            const container = document.getElementById('heaterSensorCheckboxes');
+            if (container) {
+                const sensors = tempStatus.sensors || [];
+                const savedAddresses = heaterSettings.sensor_addresses || [];
+                
+                if (sensors.length === 0) {
+                    container.innerHTML = '<span style="color: var(--text-muted); font-size: 0.85em;">No sensors detected</span>';
+                } else {
+                    container.innerHTML = '';
+                    sensors.forEach(s => {
+                        const label = document.createElement('label');
+                        label.style.cssText = 'display: flex; align-items: center; gap: 0.5rem; cursor: pointer;';
+                        const cb = document.createElement('input');
+                        cb.type = 'checkbox';
+                        cb.className = 'heater-sensor-cb';
+                        cb.value = s.address;
+                        cb.checked = savedAddresses.includes(s.address);
+                        label.appendChild(cb);
+                        label.appendChild(document.createTextNode(s.name || s.address));
+                        container.appendChild(label);
+                    });
+                }
             }
 
             const el = id => document.getElementById(id);
@@ -1290,6 +1301,12 @@ function initSettingsModal() {
         }
 
         if (heaterEnabled) {
+            // Collect checked sensor addresses
+            const sensorAddresses = [];
+            document.querySelectorAll('.heater-sensor-cb:checked').forEach(cb => {
+                sensorAddresses.push(cb.value);
+            });
+
             fetch('/api/heater/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1297,7 +1314,7 @@ function initSettingsModal() {
                     enabled: heaterEnabled.checked,
                     day_temp: parseFloat(heaterDayTemp?.value) || 22,
                     night_temp: parseFloat(heaterNightTemp?.value) || 20,
-                    sensor_address: document.getElementById('heaterSensorSelect')?.value || 'average'
+                    sensor_addresses: sensorAddresses
                 })
             }).catch(e => console.error('Failed to save heater settings:', e));
         }

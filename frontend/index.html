@@ -164,14 +164,15 @@
                             style="width: 80px;">
                         <span>°C</span>
                     </label>
-                    <label class="setting-item">
-                        <span>Control Sensor:</span>
-                        <select id="heaterSensorSelect" class="form-select" style="max-width: 200px;">
-                            <option value="average">Average (All Sensors)</option>
-                        </select>
-                    </label>
-                    <p class="setting-note">Heater turns on/off based on temperature in both day and night modes.
-                        Checked every 15 minutes.</p>
+                    <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                        <span>Control Sensors:</span>
+                        <div id="heaterSensorCheckboxes" style="margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                            <span style="color: var(--text-muted); font-size: 0.85em;">Loading sensors...</span>
+                        </div>
+                        <span style="font-size: 0.8em; color: var(--text-muted); margin-top: 0.25rem;">Select one or more. If none selected, all sensors are averaged.</span>
+                    </div>
+                    <p class="setting-note">Heater turns ON 0.5°C below target, OFF 2°C above target. Checked every
+                        cycle.</p>
                 </div>
             </div>
             <div class="modal-actions">
