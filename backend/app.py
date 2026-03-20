@@ -532,6 +532,37 @@ def check_light_schedule(status):
     except Exception as e:
         print(f"[LIGHT] Schedule check error: {e}")
 
+
+@app.route('/api/heater/settings', methods=['GET'])
+def get_heater_settings():
+    """Get heater automation settings."""
+    return jsonify(load_heater_settings())
+
+@app.route('/api/heater/settings', methods=['POST'])
+def set_heater_settings():
+    """Save heater automation settings."""
+    data = request.json
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    if save_heater_settings(data):
+        return jsonify(load_heater_settings())
+    return jsonify({'error': 'Failed to save'}), 500
+
+@app.route('/api/light/schedule', methods=['GET'])
+def get_light_schedule():
+    """Get light schedule settings."""
+    return jsonify(load_light_schedule())
+
+@app.route('/api/light/schedule', methods=['POST'])
+def set_light_schedule():
+    """Save light schedule settings."""
+    data = request.json
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    if save_light_schedule(data):
+        return jsonify(load_light_schedule())
+    return jsonify({'error': 'Failed to save'}), 500
+
 @app.route('/')
 def index():
     """Serve the main dashboard page."""
