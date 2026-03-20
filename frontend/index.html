@@ -164,6 +164,18 @@
                             style="width: 80px;">
                         <span>°C</span>
                     </label>
+                    <label class="setting-item">
+                        <span>🔽 ON offset (below target):</span>
+                        <input type="number" id="heaterHystOn" value="0.5" min="0.1" max="5" step="0.1"
+                            style="width: 80px;">
+                        <span>°C</span>
+                    </label>
+                    <label class="setting-item">
+                        <span>🔼 OFF offset (above target):</span>
+                        <input type="number" id="heaterHystOff" value="2.0" min="0.1" max="10" step="0.1"
+                            style="width: 80px;">
+                        <span>°C</span>
+                    </label>
                     <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
                         <span>Control Sensors:</span>
                         <div id="heaterSensorCheckboxes" style="margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem;">
@@ -171,8 +183,7 @@
                         </div>
                         <span style="font-size: 0.8em; color: var(--text-muted); margin-top: 0.25rem;">Select one or more. If none selected, all sensors are averaged.</span>
                     </div>
-                    <p class="setting-note">Heater turns ON 0.5°C below target, OFF 2°C above target. Checked every
-                        cycle.</p>
+                    <p class="setting-note">Heater turns ON when temp drops below (target − ON offset), and turns OFF when temp rises above (target + OFF offset). Checked every cycle.</p>
                 </div>
             </div>
             <div class="modal-actions">

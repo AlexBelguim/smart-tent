@@ -1193,6 +1193,8 @@ function initSettingsModal() {
             if (el('heaterEnabled')) el('heaterEnabled').checked = heaterSettings.enabled || false;
             if (el('heaterDayTemp')) el('heaterDayTemp').value = heaterSettings.day_temp ?? 22;
             if (el('heaterNightTemp')) el('heaterNightTemp').value = heaterSettings.night_temp ?? 20;
+            if (el('heaterHystOn')) el('heaterHystOn').value = heaterSettings.hyst_on ?? 0.5;
+            if (el('heaterHystOff')) el('heaterHystOff').value = heaterSettings.hyst_off ?? 2.0;
         }).catch(e => console.error('[HEATER] Failed to load settings:', e));
     }
 
@@ -1314,6 +1316,8 @@ function initSettingsModal() {
                     enabled: heaterEnabled.checked,
                     day_temp: parseFloat(heaterDayTemp?.value) || 22,
                     night_temp: parseFloat(heaterNightTemp?.value) || 20,
+                    hyst_on: parseFloat(document.getElementById('heaterHystOn')?.value) || 0.5,
+                    hyst_off: parseFloat(document.getElementById('heaterHystOff')?.value) || 2.0,
                     sensor_addresses: sensorAddresses
                 })
             }).catch(e => console.error('Failed to save heater settings:', e));

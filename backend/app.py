@@ -356,7 +356,7 @@ def check_fan_control(status):
 
 def load_heater_settings():
     """Load heater settings from file."""
-    defaults = {'enabled': False, 'day_temp': 22, 'night_temp': 20, 'sensor_addresses': []}
+    defaults = {'enabled': False, 'day_temp': 22, 'night_temp': 20, 'sensor_addresses': [], 'hyst_on': 0.5, 'hyst_off': 2.0}
     try:
         if os.path.exists(HEATER_SETTINGS_FILE):
             import json
@@ -471,15 +471,20 @@ def check_heater_control(status):
     heater_device = get_wiz_heater_device()
     is_heater_on = heater.get('available') and heater.get('is_on')
     
-    # Hysteresis: turn ON at target−0.5°C, turn OFF at target+2°C
-    if avg_temp < target_temp - 0.5:
+    # Hysteresis: configurable, turn ON below (target - hyst_on), turn OFF above (target + hyst_off)
+    hyst_on = float(heater_settings.get('hyst_on', 0.5))
+    hyst_off = float(heater_settings.get('hyst_off', 2.0))
+    on_threshold = target_temp - hyst_on
+    off_threshold = target_temp + hyst_off
+
+    if avg_temp < on_threshold:
         if not is_heater_on:
             result = heater_device.turn_on()
-            print(f"[HEATER] {mode_label} | {avg_temp:.1f}°C < {target_temp - 0.5:.1f}°C → ON: {result}")
-    elif avg_temp > target_temp + 2.0:
+            print(f"[HEATER] {mode_label} | {avg_temp:.1f}°C < {on_threshold:.1f}°C → ON: {result}")
+    elif avg_temp > off_threshold:
         if is_heater_on:
             result = heater_device.turn_off()
-            print(f"[HEATER] {mode_label} | {avg_temp:.1f}°C > {target_temp + 2.0:.1f}°C → OFF: {result}")
+            print(f"[HEATER] {mode_label} | {avg_temp:.1f}°C > {off_threshold:.1f}°C → OFF: {result}")
 
 
 def check_light_schedule(status):
