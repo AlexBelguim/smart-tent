@@ -12,7 +12,7 @@ const PROBE_COLORS = [
     '#a3e635', '#e879f9', '#2dd4bf', '#facc15'
 ];
 
-let ecChart = null;
+// Chart instances stored in probeCharts map (see chart section)
 let currentHistoryHours = 168;
 let isEditMode = false;
 let channelsData = [];
@@ -50,7 +50,7 @@ async function fetchHistory(hours) {
     try {
         const response = await fetch(`/api/ec/history?hours=${currentHistoryHours}`);
         const history = await response.json();
-        updateChart(history);
+        updateCharts(history);
     } catch (e) {
         console.error("Failed to fetch EC history", e);
     }
@@ -447,12 +447,15 @@ async function submitCalibrate() {
     }
 }
 
-// ============== CHART (MULTI-LINE) ==============
+// ============== CHARTS (PER-PROBE) ==============
 
-function updateChart(history) {
-    const ctx = document.getElementById('ecChart').getContext('2d');
+// Store chart instances keyed by channel id
+const probeCharts = {};
 
-    // Group by channel
+function updateCharts(history) {
+    const container = document.getElementById('probeChartsContainer');
+
+    // Group history by channel (legacy data without channel_id → CH0)
     const channelGroups = {};
     history.forEach(item => {
         const chId = item.channel_id !== undefined ? item.channel_id : 0;
@@ -468,90 +471,144 @@ function updateChart(history) {
         });
     });
 
+    // Determine which probes should have charts (enabled ones with history, or any with history)
+    const enabledIds = channelsData.filter(ch => ch.enabled).map(ch => ch.id);
+    
+    // Include all channels that have history data (covers legacy CH0 even if not "enabled" yet)
+    const chartChannelIds = new Set([...enabledIds, ...Object.keys(channelGroups).map(Number)]);
+    
+    // Only show charts for channels that actually have data
+    const activeIds = [...chartChannelIds].filter(id => channelGroups[id] && channelGroups[id].data.length > 0);
+    activeIds.sort((a, b) => a - b);
+
     const now = new Date();
     const past = new Date(now.getTime() - (currentHistoryHours * 60 * 60 * 1000));
 
-    // Build datasets
-    const datasets = Object.keys(channelGroups).map(chId => {
-        const group = channelGroups[chId];
-        const color = PROBE_COLORS[parseInt(chId) % PROBE_COLORS.length];
-        return {
-            label: group.name,
-            data: group.data,
-            borderColor: color,
-            backgroundColor: color + '1A',
-            borderWidth: 2,
-            pointRadius: 0,
-            pointHitRadius: 10,
-            fill: false,
-            tension: 0.2
-        };
+    // Destroy charts for channels no longer active
+    Object.keys(probeCharts).forEach(id => {
+        if (!activeIds.includes(parseInt(id))) {
+            probeCharts[id].destroy();
+            delete probeCharts[id];
+        }
     });
 
-    // Dynamic Y axis
-    const allValues = history.map(d => d.ec_value).filter(v => v > 0);
-    let yMin = 0, yMax = 2000;
-    if (allValues.length > 0) {
-        yMin = Math.max(0, Math.min(...allValues) - 200);
-        yMax = Math.max(...allValues) + 200;
+    // Build HTML for chart cards if needed
+    const existingIds = [...container.querySelectorAll('.probe-chart-card')].map(el => parseInt(el.dataset.channel));
+    const needsRebuild = activeIds.length !== existingIds.length || !activeIds.every((id, i) => id === existingIds[i]);
+
+    if (needsRebuild) {
+        // Destroy all existing charts before rebuilding DOM
+        Object.values(probeCharts).forEach(c => c.destroy());
+        Object.keys(probeCharts).forEach(k => delete probeCharts[k]);
+
+        if (activeIds.length === 0) {
+            container.innerHTML = `
+                <div class="probe-chart-empty">
+                    <span style="color: #6b7280; font-size: 0.85rem;">No history data yet. Run a measurement first.</span>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = activeIds.map(chId => {
+            const group = channelGroups[chId];
+            const color = PROBE_COLORS[chId % PROBE_COLORS.length];
+            const chData = channelsData.find(c => c.id === chId);
+            const name = chData ? chData.name : (group ? group.name : `Probe ${chId}`);
+
+            return `
+            <div class="probe-chart-card card" data-channel="${chId}" style="--probe-color: ${color}">
+                <div class="probe-chart-card__header">
+                    <div class="probe-card__color-dot" style="background: ${color};"></div>
+                    <span class="probe-chart-card__name">${escapeHtml(name)}</span>
+                    <span class="probe-card__channel">CH${chId}</span>
+                </div>
+                <div class="chart-container" style="height: 200px; padding: 0.5rem 0;">
+                    <canvas id="ecChart_${chId}"></canvas>
+                </div>
+            </div>`;
+        }).join('');
     }
 
-    if (ecChart) {
-        ecChart.data.datasets = datasets;
-        ecChart.options.scales.x.min = past;
-        ecChart.options.scales.x.max = now;
-        ecChart.options.scales.y.min = yMin;
-        ecChart.options.scales.y.max = yMax;
-        ecChart.update();
-    } else {
-        ecChart = new Chart(ctx, {
-            type: 'line',
-            data: { datasets },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    intersect: false,
-                    mode: 'index',
+    // Update or create each chart
+    activeIds.forEach(chId => {
+        const group = channelGroups[chId];
+        if (!group) return;
+
+        const color = PROBE_COLORS[chId % PROBE_COLORS.length];
+        const canvasEl = document.getElementById(`ecChart_${chId}`);
+        if (!canvasEl) return;
+
+        const chartData = group.data;
+
+        // Dynamic Y axis per probe
+        const ecValues = chartData.map(d => d.y).filter(v => v > 0);
+        let yMin = 0, yMax = 2000;
+        if (ecValues.length > 0) {
+            yMin = Math.max(0, Math.min(...ecValues) - 200);
+            yMax = Math.max(...ecValues) + 200;
+        }
+
+        if (probeCharts[chId]) {
+            probeCharts[chId].data.datasets[0].data = chartData;
+            probeCharts[chId].options.scales.x.min = past;
+            probeCharts[chId].options.scales.x.max = now;
+            probeCharts[chId].options.scales.y.min = yMin;
+            probeCharts[chId].options.scales.y.max = yMax;
+            probeCharts[chId].update();
+        } else {
+            probeCharts[chId] = new Chart(canvasEl.getContext('2d'), {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'EC (µS/cm)',
+                        data: chartData,
+                        borderColor: color,
+                        backgroundColor: color + '1A',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHitRadius: 10,
+                        fill: true,
+                        tension: 0.2
+                    }]
                 },
-                scales: {
-                    x: {
-                        type: 'time',
-                        min: past,
-                        max: now,
-                        time: { tooltipFormat: 'MMM d, h:mm a' },
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                        ticks: { color: '#9ca3af' }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index',
                     },
-                    y: {
-                        min: yMin,
-                        max: yMax,
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                        ticks: { color: '#9ca3af' }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        display: datasets.length > 1,
-                        labels: {
-                            color: '#d1d5db',
-                            usePointStyle: true,
-                            pointStyle: 'circle',
-                            padding: 16
+                    scales: {
+                        x: {
+                            type: 'time',
+                            min: past,
+                            max: now,
+                            time: { tooltipFormat: 'MMM d, h:mm a' },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#9ca3af', font: { size: 10 } }
+                        },
+                        y: {
+                            min: yMin,
+                            max: yMax,
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#9ca3af', font: { size: 10 } }
                         }
                     },
-                    tooltip: {
-                        backgroundColor: 'rgba(17, 24, 39, 0.9)',
-                        titleColor: '#f3f4f6',
-                        bodyColor: '#d1d5db',
-                        borderColor: 'rgba(255,255,255,0.1)',
-                        borderWidth: 1,
-                        padding: 10
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(17, 24, 39, 0.9)',
+                            titleColor: '#f3f4f6',
+                            bodyColor: '#d1d5db',
+                            borderColor: 'rgba(255,255,255,0.1)',
+                            borderWidth: 1,
+                            padding: 10
+                        }
                     }
                 }
-            }
-        });
-    }
+            });
+        }
+    });
 }
 
 // ============== SETTINGS ==============

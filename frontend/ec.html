@@ -116,27 +116,24 @@
                 </div>
             </div>
 
-            <!-- Graph Card (always visible) -->
-            <div class="card stats-card col-span-full" style="margin-top: 1rem;">
-                <div class="card-header" style="justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
-                    <div style="display: flex; align-items: center; gap: 0.75rem;">
-                        <div class="card-icon">📈</div>
-                        <div class="card-title">
-                            <h2>Historic EC Measurements</h2>
-                            <span class="device-type" id="graphSubtitle">Last 7 Days</span>
-                        </div>
-                    </div>
-                    <div class="period-selector" style="margin-bottom: 0;">
-                        <button class="period-btn" data-hours="24">1D</button>
-                        <button class="period-btn" data-hours="48">2D</button>
-                        <button class="period-btn" data-hours="72">3D</button>
-                        <button class="period-btn active" data-hours="168">7D</button>
-                        <button class="period-btn" data-hours="720">30D</button>
-                    </div>
+            <!-- Period Selector (shared across all probe charts) -->
+            <div class="ec-period-bar" style="margin-top: 1rem;">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <span class="card-icon" style="width: auto; height: auto; background: none; font-size: 1.2rem;">📈</span>
+                    <span style="font-size: 0.85rem; color: #9ca3af;" id="graphSubtitle">Last 7 Days</span>
                 </div>
-                <div class="chart-container" style="height: 300px; padding: 1rem;">
-                    <canvas id="ecChart"></canvas>
+                <div class="period-selector" style="margin-bottom: 0;">
+                    <button class="period-btn" data-hours="24">1D</button>
+                    <button class="period-btn" data-hours="48">2D</button>
+                    <button class="period-btn" data-hours="72">3D</button>
+                    <button class="period-btn active" data-hours="168">7D</button>
+                    <button class="period-btn" data-hours="720">30D</button>
                 </div>
+            </div>
+
+            <!-- Per-probe chart cards (injected by JS) -->
+            <div id="probeChartsContainer" class="probe-charts-container">
+                <!-- Each enabled probe gets its own chart card here -->
             </div>
         </main>
 

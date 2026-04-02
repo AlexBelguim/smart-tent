@@ -2023,3 +2023,57 @@ body::before {
         font-size: 0.7rem;
     }
 }
+
+/* ---- Per-Probe Chart Cards ---- */
+.ec-period-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: rgba(20, 35, 28, 0.4);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+}
+
+.probe-charts-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 1rem;
+    margin-top: 0.75rem;
+}
+
+.probe-chart-card {
+    padding: 1rem !important;
+}
+
+.probe-chart-card__header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.probe-chart-card__name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    flex: 1;
+}
+
+.probe-chart-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 2rem;
+}
+
+@media (max-width: 768px) {
+    .probe-charts-container {
+        grid-template-columns: 1fr;
+    }
+
+    .ec-period-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
