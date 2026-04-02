@@ -181,8 +181,10 @@ def background_update_thread():
                 ec_dev = get_ec_device()
                 ec_result = ec_dev.trigger_measurement()
                 if ec_result.get('success'):
-                    # The response is the new status, log the reading
-                    add_ec_reading(ec_result.get('ec_us_cm', 0), ec_result.get('raw_adc', 0))
+                    # Log readings for each enabled channel
+                    for ch in ec_result.get('channels', []):
+                        if ch.get('enabled') and ch.get('ec_us_cm', 0) > 0:
+                            add_ec_reading(ch.get('ec_us_cm', 0), ch.get('raw_adc', 0), ch.get('id', 0), ch.get('name', f"Probe {ch.get('id', 0)}"))
                 last_ec_measure_time = now
 
             # Save periodically (e.g., every 60s)
@@ -262,21 +264,25 @@ def check_push_notifications(status):
                         pass  # Push failed, continue silently
                     last_humidity_low_notification_time = now
 
-    # Water runout alert from ESP32 EC sensor
+    # Water runout alert from ESP32 EC sensor (check all enabled channels)
     ec_data = devices.get('ec', {})
-    if ec_data.get('available') and ec_data.get('water_empty'):
-        now = time.time()
-        # Cooldown: 4 hours
-        if now - last_ec_water_notification_time > 4 * 60 * 60:
-            try:
-                send_push_notification(
-                    "🚱 Water Runout",
-                    "The water level has dropped below the minimum threshold (Sensor ADC < 150).",
-                    "water-runout"
-                )
-            except Exception as e:
-                pass
-            last_ec_water_notification_time = now
+    if ec_data.get('available'):
+        for ch in ec_data.get('channels', []):
+            if ch.get('enabled') and ch.get('water_empty'):
+                now = time.time()
+                # Cooldown: 4 hours
+                if now - last_ec_water_notification_time > 4 * 60 * 60:
+                    probe_name = ch.get('name', f"Probe {ch.get('id', '?')}")
+                    try:
+                        send_push_notification(
+                            f"🚱 Water Runout — {probe_name}",
+                            f"{probe_name}: Water level dropped below minimum (ADC < 150).",
+                            "water-runout"
+                        )
+                    except Exception as e:
+                        pass
+                    last_ec_water_notification_time = now
+                break  # Only one notification per cycle
 
 def check_fan_control(status):
     """Check humidity and grow lights to strictly enforce fan speed."""
@@ -600,18 +606,19 @@ def get_fan():
 
 @app.route('/api/ec')
 def get_ec():
-    """Get EC and water runtime status."""
+    """Get EC and water runtime status (multi-channel MUX)."""
     return jsonify(get_ec_status())
 
 @app.route('/api/ec/kfactor', methods=['POST'])
 def set_ec_kfactor():
-    """Set EC K-Factor (requires auth code)."""
+    """Set EC K-Factor (requires auth code). Supports channel param."""
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No data provided'}), 400
     
     kfactor = data.get('kfactor')
     code = data.get('code')
+    channel = data.get('channel', 0)
     
     if kfactor is None:
         return jsonify({'error': 'kfactor required'}), 400
@@ -619,7 +626,7 @@ def set_ec_kfactor():
         return jsonify({'error': 'Authentication code required'}), 401
     
     ec_dev = get_ec_device()
-    result = ec_dev.set_kfactor(float(kfactor), code)
+    result = ec_dev.set_kfactor(float(kfactor), code, channel=channel)
     
     if result.get('success'):
         return jsonify(result)
@@ -642,11 +649,6 @@ def api_ec_settings():
     if not code:
         return jsonify({'error': 'Authentication code required'}), 401
     
-    # We verify auth code simply by assuming any fan verification passes
-    # or relying on ECDevice's verify auth endpoint if needed, but since it's backend:
-    esp32_auth_hash = get_ec_device().verify_auth(code) 
-    
-    # Alternatively we can just use the backend env FAN_AUTH_CODE
     if hashlib.sha256(code.encode()).hexdigest() != hashlib.sha256(os.getenv('FAN_AUTH_CODE', '4444').encode()).hexdigest():
         return jsonify({'error': 'Invalid authentication code'}), 403
     
@@ -656,26 +658,80 @@ def api_ec_settings():
 
 @app.route('/api/ec/measure', methods=['POST'])
 def trigger_ec_measure():
-    """Trigger a physical 5-sample measurement burst on the ESP32."""
+    """Trigger measurement burst on ESP32 MUX. Optional channel param."""
+    data = request.get_json() or {}
+    channel = data.get('channel')  # None = all enabled
+    
     ec_dev = get_ec_device()
-    result = ec_dev.trigger_measurement()
+    result = ec_dev.trigger_measurement(channel=channel)
     
     if result.get('success'):
-        # Log the newly acquired reading
-        add_ec_reading(result.get('ec_us_cm', 0), result.get('raw_adc', 0))
+        # Log readings for each enabled channel
+        for ch in result.get('channels', []):
+            if ch.get('enabled') and ch.get('ec_us_cm', 0) > 0:
+                add_ec_reading(ch.get('ec_us_cm', 0), ch.get('raw_adc', 0), ch.get('id', 0), ch.get('name', f"Probe {ch.get('id', 0)}"))
         return jsonify(result)
     else:
         return jsonify(result), 500
 
+@app.route('/api/ec/probe/config', methods=['POST'])
+def set_ec_probe_config():
+    """Configure a probe channel (name, enabled, k_factor, temp_sensor)."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    
+    channel = data.get('channel')
+    if channel is None:
+        return jsonify({'error': 'channel required'}), 400
+    
+    ec_dev = get_ec_device()
+    kwargs = {}
+    if 'name' in data: kwargs['name'] = data['name']
+    if 'enabled' in data: kwargs['enabled'] = data['enabled']
+    if 'k_factor' in data: kwargs['k_factor'] = data['k_factor']
+    if 'temp_sensor_index' in data: kwargs['temp_sensor_index'] = data['temp_sensor_index']
+    
+    result = ec_dev.set_channel_config(channel, **kwargs)
+    
+    if result.get('success'):
+        return jsonify(result)
+    return jsonify(result), 500
+
+@app.route('/api/ec/probe/calibrate', methods=['POST'])
+def calibrate_ec_probe():
+    """Auto-calibrate K-factor from a reference meter reading."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    
+    channel = data.get('channel')
+    reference_ec = data.get('reference_ec')
+    
+    if channel is None or reference_ec is None:
+        return jsonify({'error': 'channel and reference_ec required'}), 400
+    
+    ec_dev = get_ec_device()
+    result = ec_dev.calibrate_channel(int(channel), float(reference_ec))
+    
+    if result.get('success'):
+        return jsonify(result)
+    return jsonify(result), 500
+
 @app.route('/api/ec/history')
 def api_get_ec_history():
-    """Get historic EC data."""
-    hours = int(request.args.get('hours', 168)) # 7 days default
+    """Get historic EC data. Optional channel filter."""
+    hours = int(request.args.get('hours', 168))
+    channel = request.args.get('channel')  # Optional filter
     history = load_ec_history()
     
     from datetime import timedelta
     cutoff = datetime.now() - timedelta(hours=hours)
     filtered = [r for r in history if datetime.fromisoformat(r['timestamp']) > cutoff]
+    
+    if channel is not None:
+        channel = int(channel)
+        filtered = [r for r in filtered if r.get('channel_id', 0) == channel]
     
     return jsonify(filtered)
 
@@ -858,27 +914,31 @@ def save_ec_settings(settings):
         print(f'[EC] Failed to save settings: {e}')
         return False
 
-def add_ec_reading(ec_value, raw_adc):
-    """Add an EC reading to history."""
-    # We don't want to log every 5 seconds, let's keep it to 1 per hour or minute.
-    # We can check the last entry timestamp.
+def add_ec_reading(ec_value, raw_adc, channel_id=0, channel_name='Probe 0'):
+    """Add an EC reading to history (per-channel)."""
     history = load_ec_history()
     
-    if len(history) > 0:
-        last_entry = datetime.fromisoformat(history[-1]['timestamp'])
-        if (datetime.now() - last_entry).total_seconds() < 900: # Log every 15 minutes max
-            return history[-1]
+    # Check per-channel rate limit (15 min between logs for same channel)
+    now = datetime.now()
+    for entry in reversed(history):
+        if entry.get('channel_id', 0) == channel_id:
+            last_time = datetime.fromisoformat(entry['timestamp'])
+            if (now - last_time).total_seconds() < 900:
+                return entry
+            break
             
     reading = {
-        'timestamp': datetime.now().isoformat(),
+        'timestamp': now.isoformat(),
         'ec_value': ec_value,
-        'raw_adc': raw_adc
+        'raw_adc': raw_adc,
+        'channel_id': channel_id,
+        'channel_name': channel_name
     }
     history.append(reading)
     
     # Keep only last 14 days
     from datetime import timedelta
-    cutoff = datetime.now() - timedelta(days=14)
+    cutoff = now - timedelta(days=14)
     history = [r for r in history if datetime.fromisoformat(r['timestamp']) > cutoff]
     
     save_ec_history(history)

@@ -1,13 +1,19 @@
-"""ESP32 EC and Water Sensor integration for Smart Tent Dashboard."""
+"""ESP32 MUX EC Controller integration for Smart Tent Dashboard.
+
+Supports 16-channel multiplexer with per-probe K-factor, temp sensor
+assignment, and auto-calibration from reference meter readings.
+"""
 import hashlib
 import os
 from typing import Optional
 import requests
 
+
 class ECDevice:
-    """Interface for ESP32 EC and Water sensor."""
+    """Interface for ESP32 MUX EC Controller."""
     
     TIMEOUT = 5  # seconds
+    MEASURE_TIMEOUT = 30  # measurement can take a while with multiple channels
     
     def __init__(self, ip_address: Optional[str] = None, auth_code: Optional[str] = None):
         self.ip = ip_address or os.getenv('ESP32_EC_IP')
@@ -18,12 +24,12 @@ class ECDevice:
         return f"http://{self.ip}"
     
     def get_status(self) -> dict:
-        """Get current EC and water status from ESP32."""
+        """Get current status from all 16 MUX channels + temp sensors."""
         if not self.ip:
             return {
                 'available': False,
                 'error': 'ESP32_EC_IP not configured',
-                'device': 'EC Sensor'
+                'device': 'MUX EC Controller'
             }
         
         try:
@@ -33,67 +39,126 @@ class ECDevice:
             )
             response.raise_for_status()
             data = response.json()
-            data['device'] = 'EC Sensor'
+            data['device'] = 'MUX EC Controller'
             data['available'] = True
             return data
             
         except requests.Timeout:
             return {
                 'available': False,
-                'device': 'EC Sensor',
+                'device': 'MUX EC Controller',
                 'error': 'Connection timeout',
                 'ip': self.ip
             }
         except requests.ConnectionError:
             return {
                 'available': False,
-                'device': 'EC Sensor',
+                'device': 'MUX EC Controller',
                 'error': 'Cannot connect to ESP32',
                 'ip': self.ip
             }
         except Exception as e:
             return {
                 'available': False,
-                'device': 'EC Sensor',
+                'device': 'MUX EC Controller',
                 'error': f'[EC] {str(e)}',
                 'ip': self.ip
             }
             
-    def trigger_measurement(self) -> dict:
-        """Trigger an on-demand 5-sample burst measurement on ESP32."""
+    def trigger_measurement(self, channel: Optional[int] = None) -> dict:
+        """Trigger measurement on all enabled channels or a specific channel.
+        
+        Args:
+            channel: Optional channel number (0-15). If None, measures all enabled.
+        """
         if not self.ip:
             return {'success': False, 'error': 'ESP32_EC_IP not configured'}
             
         try:
-            # High timeout because 5 samples * 1sec delay = 5 seconds on ESP32
-            response = requests.post(
-                f"{self._get_base_url()}/measure",
-                timeout=15 
-            )
+            url = f"{self._get_base_url()}/measure"
+            if channel is not None:
+                url += f"?channel={channel}"
+            
+            response = requests.post(url, timeout=self.MEASURE_TIMEOUT)
             response.raise_for_status()
             data = response.json()
             data['success'] = True
             return data
             
         except requests.Timeout:
-            return {'success': False, 'error': 'Measurement timeout (took > 15s)'}
+            return {'success': False, 'error': 'Measurement timeout'}
         except requests.ConnectionError:
             return {'success': False, 'error': 'Cannot connect to ESP32'}
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
-    def set_kfactor(self, kfactor: float, code: Optional[str] = None) -> dict:
-        """Set K-Factor on ESP32."""
+    def set_channel_config(self, channel: int, **kwargs) -> dict:
+        """Configure a probe channel.
+        
+        Args:
+            channel: Channel number (0-15)
+            **kwargs: Any of: name, enabled, k_factor, temp_sensor_index
+        """
         if not self.ip:
             return {'success': False, 'error': 'ESP32_EC_IP not configured'}
         
-        # Hash the provided code or use stored code
+        payload = {'channel': channel}
+        payload.update(kwargs)
+        
+        try:
+            response = requests.post(
+                f"{self._get_base_url()}/channel/config",
+                json=payload,
+                timeout=self.TIMEOUT
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.Timeout:
+            return {'success': False, 'error': 'Connection timeout'}
+        except requests.ConnectionError:
+            return {'success': False, 'error': 'Cannot connect to ESP32'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    def calibrate_channel(self, channel: int, reference_ec: float) -> dict:
+        """Auto-calibrate K-factor from a reference meter reading.
+        
+        The ESP32 takes a fresh measurement with K=1.0, then computes:
+        K = reference_ec / raw_ec
+        
+        Args:
+            channel: Channel number (0-15)
+            reference_ec: EC reading from handheld meter (µS/cm)
+        """
+        if not self.ip:
+            return {'success': False, 'error': 'ESP32_EC_IP not configured'}
+        
+        try:
+            response = requests.post(
+                f"{self._get_base_url()}/channel/calibrate",
+                json={'channel': channel, 'reference_ec': reference_ec},
+                timeout=self.MEASURE_TIMEOUT
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.Timeout:
+            return {'success': False, 'error': 'Calibration timeout'}
+        except requests.ConnectionError:
+            return {'success': False, 'error': 'Cannot connect to ESP32'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    def set_kfactor(self, kfactor: float, code: Optional[str] = None, channel: int = 0) -> dict:
+        """Set K-Factor on ESP32 (legacy compat)."""
+        if not self.ip:
+            return {'success': False, 'error': 'ESP32_EC_IP not configured'}
+        
         auth_hash = hashlib.sha256((code or self._auth_code).encode()).hexdigest()
         
         try:
             response = requests.post(
                 f"{self._get_base_url()}/kfactor",
-                json={'kfactor': kfactor, 'auth_hash': auth_hash},
+                json={'kfactor': kfactor, 'auth_hash': auth_hash, 'channel': channel},
                 timeout=self.TIMEOUT
             )
             
@@ -127,6 +192,22 @@ class ECDevice:
             
         except Exception:
             return False
+
+    def get_temp_sensors(self) -> dict:
+        """Get temperature sensors from the MUX board."""
+        if not self.ip:
+            return {'count': 0, 'sensors': []}
+        
+        try:
+            response = requests.get(
+                f"{self._get_base_url()}/sensors",
+                timeout=self.TIMEOUT
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception:
+            return {'count': 0, 'sensors': []}
+
 
 # Singleton instance
 _ec_instance: Optional[ECDevice] = None

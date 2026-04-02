@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Tent — EC & Water Monitor</title>
     <meta name="theme-color" content="#0a0f0d">
-    <link rel="stylesheet" href="styles.css?v=1.4">
+    <meta name="description" content="Multi-probe EC monitoring with per-probe K-factor calibration">
+    <link rel="stylesheet" href="styles.css?v=1.5">
     <link rel="stylesheet" href="stats.css?v=1.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,51 +25,98 @@
                     </a>
                 </div>
                 <div class="header-right">
+                    <button id="btnEditMode" class="ec-edit-toggle" title="Toggle Edit Mode">
+                        <span class="edit-icon">✏️</span>
+                        <span class="edit-label">Edit</span>
+                    </button>
+                    <button id="btnTestAll" class="ec-test-all-btn" title="Measure All Probes">
+                        <span>⚡</span> Test All
+                    </button>
+                    <div class="status-badge" id="statusBadgeContainer">
+                        <span class="badge offline" id="statusBadge">Checking...</span>
+                    </div>
                     <a href="/" class="settings-indicator" title="Dashboard" style="text-decoration: none;">🌱</a>
                 </div>
             </div>
         </header>
 
         <main class="dashboard" style="margin-top: 2rem;">
-            <!-- Current Status Card -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-icon">⚡</div>
-                    <div class="card-title">
-                        <h2>Current Status</h2>
-                        <span class="device-type">Attic Greenhouse ESP32</span>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; align-items: center; margin-left: auto;">
-                        <button id="btnTestNow" class="btn-primary" style="padding: 0.4rem 0.8rem; border-radius: 6px; border: none; background: rgba(255,255,255,0.1); color: white; cursor: pointer; font-size: 0.8rem;">Test Now</button>
-                        <div class="status-badge" id="statusBadgeContainer">
-                            <span class="badge offline" id="statusBadge">Checking...</span>
+            <!-- View Mode: Probe Cards Grid -->
+            <div id="viewMode">
+                <div id="probeCardsGrid" class="probe-cards-grid">
+                    <!-- Probe cards injected by JS -->
+                    <div class="probe-card probe-card--empty">
+                        <div class="probe-card__empty-msg">
+                            <span style="font-size: 2rem;">🔌</span>
+                            <p>No probes enabled yet</p>
+                            <p style="font-size: 0.8rem; opacity: 0.6;">Tap <strong>Edit</strong> to configure your probes</p>
                         </div>
                     </div>
                 </div>
-                <div class="card-body">
-                    <div class="metric-grid">
-                        <div class="metric metric-large">
-                            <span class="metric-label">EC</span>
-                            <span class="metric-value"><span id="ecValue">--</span> <span style="font-size: 0.5em; opacity: 0.7;">µS/cm</span></span>
-                        </div>
-                        <div class="metric metric-large">
-                            <span class="metric-label">Water Tank</span>
-                            <span class="metric-value" id="waterValue">--</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Raw ADC</span>
-                            <span class="metric-value" id="adcValue">--</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">K-Factor</span>
-                            <span class="metric-value" id="kfactorValue">--</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="card-error" id="ecError" style="display: none;"></div>
             </div>
 
-            <!-- Graph Card -->
+            <!-- Edit Mode: Channel Configuration -->
+            <div id="editMode" style="display: none;">
+                <div class="ec-edit-banner">
+                    <div class="ec-edit-banner__icon">⚙️</div>
+                    <div class="ec-edit-banner__text">
+                        <strong>Edit Mode</strong> — Configure your 16 MUX channels
+                    </div>
+                </div>
+
+                <!-- Temperature Sensors Detected -->
+                <div class="card" style="margin-bottom: 1rem;">
+                    <div class="card-header">
+                        <div class="card-icon">🌡️</div>
+                        <div class="card-title">
+                            <h2>Temperature Sensors</h2>
+                            <span class="device-type" id="tempSensorSubtitle">Detected on OneWire Bus</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="tempSensorsList" class="ec-temp-sensors-list">
+                            <span style="color: #9ca3af; font-size: 0.85rem;">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Channel List -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon">📡</div>
+                        <div class="card-title">
+                            <h2>MUX Channels</h2>
+                            <span class="device-type">16 Channels Available</span>
+                        </div>
+                    </div>
+                    <div class="card-body" style="padding: 0;">
+                        <div id="channelList" class="ec-channel-list">
+                            <!-- Channel rows injected by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Card -->
+                <div class="card" style="margin-top: 1rem;">
+                    <div class="card-header">
+                        <div class="card-icon">⏱️</div>
+                        <div class="card-title">
+                            <h2>Measurement Settings</h2>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+                            <label class="setting-item" style="flex: 1; min-width: 120px; border: none; padding: 0;">
+                                <span style="display: block; margin-bottom: 0.5rem; color: #9ca3af; font-size: 0.85rem;">Auto-Test Interval (mins)</span>
+                                <input type="number" id="newIntervalInput" value="15" step="1" min="1" style="width: 100%; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.5); color: white; padding: 0.75rem; border-radius: 8px;">
+                            </label>
+                            <button id="btnSaveSettings" class="btn-primary" style="padding: 0.75rem 1.5rem; border-radius: 8px; border: none; background: #4ade80; color: #0a0f0d; font-weight: 600; cursor: pointer; height: fit-content;">Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Graph Card (always visible) -->
             <div class="card stats-card col-span-full" style="margin-top: 1rem;">
                 <div class="card-header" style="justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
                     <div style="display: flex; align-items: center; gap: 0.75rem;">
@@ -90,36 +138,36 @@
                     <canvas id="ecChart"></canvas>
                 </div>
             </div>
+        </main>
 
-            <!-- Settings Card -->
-            <div class="card" style="margin-top: 1rem;">
-                <div class="card-header">
-                    <div class="card-icon">⚙️</div>
-                    <div class="card-title">
-                        <h2>Settings & Calibration</h2>
-                    </div>
+        <!-- Calibration Modal -->
+        <div id="calibrateModal" class="modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; align-items: center; justify-content: center;">
+            <div class="modal-content" style="background: #111827; padding: 2rem; border-radius: 16px; width: 90%; max-width: 420px; border: 1px solid rgba(255,255,255,0.1);">
+                <h3 style="margin-top: 0; margin-bottom: 0.5rem; color: #f3f4f6;">🎯 Quick Calibrate</h3>
+                <p id="calibrateProbeLabel" style="color: #9ca3af; margin-bottom: 1.5rem; font-size: 0.9rem;">Probe 0</p>
+                <p style="color: #d1d5db; font-size: 0.85rem; margin-bottom: 1rem;">
+                    Dip this probe and your handheld EC meter in the <strong>same water</strong>. Enter the handheld reading below. The K-factor will auto-adjust.
+                </p>
+                <label style="display: block; margin-bottom: 1rem;">
+                    <span style="display: block; margin-bottom: 0.5rem; color: #9ca3af; font-size: 0.85rem;">Handheld EC Reading (µS/cm)</span>
+                    <input type="number" id="calibrateECInput" placeholder="e.g. 1960" step="1" min="1" style="width: 100%; font-size: 1.2rem; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 0.75rem; border-radius: 8px;">
+                </label>
+                <div id="calibrateResult" style="display: none; padding: 0.75rem; border-radius: 8px; background: rgba(74, 222, 128, 0.1); border: 1px solid rgba(74, 222, 128, 0.3); margin-bottom: 1rem;">
+                    <span style="color: #4ade80; font-size: 0.85rem;" id="calibrateResultText"></span>
                 </div>
-                <div class="card-body">
-                    <div style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
-                        <label class="setting-item" style="flex: 1; min-width: 120px; border: none; padding: 0;">
-                            <span style="display: block; margin-bottom: 0.5rem; color: #9ca3af; font-size: 0.85rem;">New K-Factor</span>
-                            <input type="number" id="newKFactorInput" value="1.9" step="0.01" style="width: 100%; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.5); color: white; padding: 0.75rem; border-radius: 8px;">
-                        </label>
-                        <label class="setting-item" style="flex: 1; min-width: 120px; border: none; padding: 0;">
-                            <span style="display: block; margin-bottom: 0.5rem; color: #9ca3af; font-size: 0.85rem;">Test Interval (mins)</span>
-                            <input type="number" id="newIntervalInput" value="15" step="1" min="1" style="width: 100%; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.5); color: white; padding: 0.75rem; border-radius: 8px;">
-                        </label>
-                        <button id="btnChangeSettings" class="btn-primary" style="padding: 0.75rem 1.5rem; border-radius: 8px; border: none; background: #4ade80; color: #0a0f0d; font-weight: 600; cursor: pointer; height: fit-content;">Save</button>
-                    </div>
+                <div id="calibrateError" style="display: none; color: #f87171; font-size: 0.85rem; margin-bottom: 1rem;"></div>
+                <div class="modal-actions" style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                    <button id="btnCalibrateCancel" style="flex: 1; padding: 0.75rem; background: rgba(255,255,255,0.05); color: white; border: none; border-radius: 8px; cursor: pointer;">Cancel</button>
+                    <button id="btnCalibrateSubmit" style="flex: 1; padding: 0.75rem; background: #4ade80; color: #0a0f0d; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Calibrate</button>
                 </div>
             </div>
-        </main>
-        
-        <!-- PIN Modal -->
+        </div>
+
+        <!-- PIN Modal (for settings) -->
         <div id="pinModal" class="modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
             <div class="modal-content" style="background: #111827; padding: 2rem; border-radius: 16px; width: 90%; max-width: 400px; border: 1px solid rgba(255,255,255,0.1);">
                 <h3 style="margin-top: 0; margin-bottom: 1rem; color: #f3f4f6;">🔐 Enter PIN</h3>
-                <p style="color: #9ca3af; margin-bottom: 1.5rem; font-size: 0.9rem;">Enter your 4-digit code to change settings.</p>
+                <p style="color: #9ca3af; margin-bottom: 1.5rem; font-size: 0.9rem;">Enter your 4-digit code to save settings.</p>
                 <input type="password" id="pinInput" maxlength="4" pattern="[0-9]*" inputmode="numeric" placeholder="••••" style="width: 100%; font-size: 2rem; text-align: center; letter-spacing: 0.5em; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 1rem; border-radius: 8px; margin-bottom: 0.5rem;">
                 <div id="pinError" style="display: none; color: #f87171; font-size: 0.85rem; margin-bottom: 1rem; text-align: center;">Invalid PIN</div>
                 <div class="modal-actions" style="display: flex; gap: 1rem; margin-top: 1.5rem;">
@@ -133,6 +181,6 @@
             <p><a href="/" style="color: inherit; text-decoration: none; opacity: 0.7;">← Back to Dashboard</a></p>
         </footer>
     </div>
-    <script src="ec.js?v=1.4"></script>
+    <script src="ec.js?v=2.0"></script>
 </body>
 </html>
