@@ -1,0 +1,18 @@
+services:
+  tent:
+    build: .
+    container_name: tent-app
+    # Host networking so Wiz UDP broadcast discovery works.
+    # Without it everything still works, but "Discover Wiz plugs" won't find
+    # devices — add them by IP instead. App listens on port 8420.
+    network_mode: host
+    environment:
+      - TZ=${TZ:-Europe/Amsterdam}
+      - TAPO_EMAIL=${TAPO_EMAIL:-}
+      - TAPO_PASSWORD=${TAPO_PASSWORD:-}
+      - DREO_EMAIL=${DREO_EMAIL:-}
+      - DREO_PASSWORD=${DREO_PASSWORD:-}
+    volumes:
+      # On TrueNAS point this at a dataset, e.g. /mnt/tank/apps/tent-app:/data
+      - ./data:/data
+    restart: unless-stopped

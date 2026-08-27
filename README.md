@@ -1,101 +1,61 @@
-# Smart Tent Dashboard 🌱
+# Tent App
 
-A beautiful web dashboard to monitor your grow tent devices in one place.
+Grow tent dashboard, rebuilt from scratch. Runs as a single Docker container on
+TrueNAS; all history lives in SQLite on a mounted volume so graphs survive
+restarts and rebuilds.
 
-## Supported Devices
-
-| Device | Library | Connection |
-|--------|---------|------------|
-| **Wiz Smart Socket** (Grow Lights) | `pywizlight` | Local Network |
-| **Dreo Humidifier** | `pydreo` | Cloud API |
-| **Tapo P110** (Energy Monitor) | `python-tapo` | Local Network |
-
-## Quick Start
-
-### 1. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Configure Your Devices
-
-Copy the example config and fill in your credentials:
-
-```bash
-cp config.example.env .env
-```
-
-Edit `.env` with your device information:
-
-```env
-# Wiz Smart Socket IP (find in router or Wiz app)
-WIZ_LIGHT_IP=192.168.1.xxx
-
-# Dreo Cloud Login
-DREO_EMAIL=your_email@example.com
-DREO_PASSWORD=your_password
-
-# Tapo Cloud Login + Device IP
-TAPO_EMAIL=your_email@example.com
-TAPO_PASSWORD=your_password
-TAPO_DEVICE_IP=192.168.1.xxx
-```
-
-### 3. Run the Dashboard
-
-```bash
-python backend/app.py
-```
-
-Open your browser to **http://localhost:5000**
+The ESP32 firmware is **not** part of this repo — it reuses the existing
+`esp32_fan_controller.ino` (fan PWM + DS18B20 temps, HTTP API) unchanged.
 
 ## Features
 
-- 🌙 **Dark Theme** - Easy on the eyes, perfect for grow room monitoring
-- ⚡ **Real-time Updates** - Auto-refreshes every 10 seconds
-- 📊 **Energy Monitoring** - Track power consumption from your Tapo P110
-- 💧 **Humidity Tracking** - Monitor your Dreo humidifier status
-- 💡 **Light Status** - See if your grow lights are on and brightness levels
-- ⏱️ **Uptime Tracking** - Know how long each device has been running
+- **Device registry, no hardcoding** — add devices in Settings and give each a
+  role (light, heater, humidifier, exhaust, energy). Wiz plugs can be
+  auto-discovered on the LAN.
+- **Persistent history** — a background poller samples every device each minute
+  into SQLite: temperatures, power draw, humidity, fan speed, plus daily kWh
+  totals with midnight-rollover protection.
+- **Automation** — per Wiz plug: a daily on/off schedule (grow light) and/or a
+  thermostat with hysteresis fed by the ESP32's temperature sensors (heater).
+- **Planner** — log plants (what/when planted, medium) and events per plant:
+  watering with amount, what water/nutrient mix, pH, feeding, transplants,
+  harvests, notes. One watering can be logged to several plants at once.
 
-## API Endpoints
+Supported devices: ESP32 fan+temp controller (local HTTP), Wiz plugs (local
+UDP), Tapo P110 (local, needs TP-Link account credentials), Dreo humidifier
+(cloud, EU region).
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /` | Dashboard webpage |
-| `GET /api/status` | All device statuses |
-| `GET /api/wiz` | Wiz light status only |
-| `GET /api/dreo` | Dreo humidifier status only |
-| `GET /api/tapo` | Tapo energy data only |
-| `GET /api/health` | Server health check |
+## Run on TrueNAS
 
-## Project Structure
-
-```
-smart tent/
-├── backend/
-│   ├── app.py              # Flask server
-│   └── devices/
-│       ├── wiz_device.py   # Wiz integration
-│       ├── dreo_device.py  # Dreo integration
-│       └── tapo_device.py  # Tapo integration
-├── frontend/
-│   ├── index.html          # Dashboard page
-│   ├── styles.css          # Dark theme styles
-│   └── app.js              # Data fetching & UI
-├── requirements.txt
-├── config.example.env
-└── README.md
+```bash
+git clone <this repo> && cd tent-app
+cp .env.example .env   # fill in Tapo/Dreo credentials (optional)
+docker compose up -d --build
 ```
 
-## Troubleshooting
+Open `http://<server>:8420`. Point the compose volume at a dataset
+(e.g. `/mnt/tank/apps/tent-app:/data`) — that folder holds `tent.db` with all
+history; back it up like any dataset.
 
-**Device shows "Offline"?**
-- Check that the IP address is correct
-- Ensure your computer is on the same network as the devices
-- For Dreo/Tapo: verify your cloud account credentials
+`network_mode: host` is used so Wiz UDP broadcast discovery works. If you drop
+it, map port 8420 and add Wiz plugs by IP manually.
 
-**Can't find device IP?**
-- Check your router's connected devices list
-- Use the official app to find the device IP in settings
+## Development
+
+```bash
+# backend (http://127.0.0.1:8321)
+python -m venv .venv && .venv/Scripts/pip install -r backend/requirements.txt
+cd backend && ../.venv/Scripts/python -m uvicorn app.main:app --port 8321
+
+# frontend dev server with proxy (http://localhost:5173)
+cd frontend && npm install && npm run dev
+```
+
+## API sketch
+
+- `GET/POST/PATCH/DELETE /api/devices` — registry; `POST /api/devices/{id}/action`
+  (`on` / `off` / `speed`), `GET /api/devices/{id}/status` (live), `GET /api/discover/wiz`
+- `GET /api/history?metric=temp_c|power_w|humidity|fan_speed&hours=24` — time series
+- `GET /api/energy/daily?days=30` — daily kWh + cost totals
+- `GET/POST /api/plants`, `POST /api/plants/{id}/events` — planner
+- `GET/PUT /api/settings` — kWh price, currency, poll intervals

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Icon "version 8": big low-set seedling emoji, tight green glow, dark-to-green gradient -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#232322"/>
+      <stop offset="1" stop-color="#0f1a0f"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#39ff88" flood-opacity="0.8"/>
+    </filter>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <text x="64" y="116" font-size="106" text-anchor="middle" filter="url(#glow)">🌱</text>
+</svg>

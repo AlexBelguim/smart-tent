@@ -1,37 +1,8 @@
-# Environment files
-.env
-
-# Python
 __pycache__/
 *.pyc
-*$py.class
-*.so
-.Python
-venv/
-env/
-.venv/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# SSL certificates (never commit private keys!)
-*.pem
-
-# Data directory (VAPID keys, subscriptions)
+.env
+node_modules/
+frontend/dist/
 data/
-runtime_history.json
-backend/fan_settings.json
-backend/energy_history.json
-backend/heater_settings.json
-backend/light_schedule.json
-backend/temp_history.json
-backend/temp_settings.json
-backend/ec_history.json
-backend/ec_settings.json
+*.db
+.venv/

@@ -1,0 +1,1 @@
+{"day": 75, "night": 15, "tent_width": 120, "tent_depth": 120, "tent_height": 200, "exhaust_count": 1, "exhaust_size": 150, "exhaust_max_rpm": 2500, "exhaust_min_rpm": 0, "intake_count": 0, "intake_size": 150, "intake_max_rpm": 2500, "intake_min_rpm": 0, "exhaust_fans": [{"pin": 16, "size": 120, "min_rpm": 600, "max_rpm": 2000}], "intake_fans": []}
