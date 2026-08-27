@@ -1,8 +1,9 @@
 """App settings (key-value): energy price, currency, poll intervals."""
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from ..db import SessionLocal, Setting, DEFAULT_SETTINGS
+from ..security import require_pin
 
 router = APIRouter(prefix="/api")
 
@@ -23,7 +24,7 @@ def get_settings():
     return {**DEFAULT_SETTINGS, **stored}
 
 
-@router.put("/settings")
+@router.put("/settings", dependencies=[Depends(require_pin)])
 def put_settings(body: SettingsIn):
     session = SessionLocal()
     try:

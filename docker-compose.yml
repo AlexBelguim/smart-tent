@@ -12,6 +12,7 @@ services:
       - TAPO_PASSWORD=${TAPO_PASSWORD:-}
       - DREO_EMAIL=${DREO_EMAIL:-}
       - DREO_PASSWORD=${DREO_PASSWORD:-}
+      - TENT_PIN=${TENT_PIN:-4444}
     volumes:
       # On TrueNAS point this at a dataset, e.g. /mnt/tank/apps/tent-app:/data
       - ./data:/data

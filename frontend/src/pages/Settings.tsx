@@ -1,5 +1,44 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { api, Device } from '../api'
+import { api, Device, getPin, setPin } from '../api'
+
+function PinGate({ onUnlocked }: { onUnlocked: () => void }) {
+  const [pin, setPinInput] = useState('')
+  const [error, setError] = useState('')
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    try {
+      setPin(pin)
+      await api.verifyPin(pin)
+      onUnlocked()
+    } catch {
+      setPin('')
+      setError('Wrong PIN')
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="card" style={{ maxWidth: 320, margin: '60px auto', textAlign: 'center' }}>
+      <h3>🔒 Settings locked</h3>
+      <input
+        type="password"
+        inputMode="numeric"
+        maxLength={8}
+        autoFocus
+        value={pin}
+        onChange={(e) => setPinInput(e.target.value)}
+        placeholder="PIN"
+        style={{ textAlign: 'center', fontSize: 20, letterSpacing: 6, width: 140, margin: '12px 0' }}
+      />
+      {error && <p className="error-text">{error}</p>}
+      <div>
+        <button className="btn primary" type="submit">
+          Unlock
+        </button>
+      </div>
+    </form>
+  )
+}
 
 const ROLES = ['light', 'heater', 'humidifier', 'exhaust', 'energy', 'other']
 const KINDS: { value: Device['kind']; label: string }[] = [
@@ -10,6 +49,18 @@ const KINDS: { value: Device['kind']; label: string }[] = [
 ]
 
 export default function Settings() {
+  const [unlocked, setUnlocked] = useState(false)
+  useEffect(() => {
+    if (getPin()) {
+      api.verifyPin(getPin()).then(() => setUnlocked(true)).catch(() => setPin(''))
+    }
+  }, [])
+
+  if (!unlocked) return <PinGate onUnlocked={() => setUnlocked(true)} />
+  return <SettingsInner />
+}
+
+function SettingsInner() {
   const [devices, setDevices] = useState<Device[]>([])
   const [editing, setEditing] = useState<Device | 'new' | null>(null)
   const [found, setFound] = useState<{ ip: string; mac: string | null; registered: boolean }[] | null>(null)

@@ -1,14 +1,27 @@
-"""Device registry CRUD, live status, control actions, and Wiz discovery."""
+﻿"""Device registry CRUD, live status, control actions, and Wiz discovery."""
 import asyncio
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..db import SessionLocal, Device
 from ..drivers import esp32, wiz, tapo, dreo
+from ..security import check_pin, require_pin
 from .. import poller
 
 router = APIRouter(prefix="/api")
+
+
+class AuthIn(BaseModel):
+    pin: str
+
+
+@router.post("/auth")
+def auth(body: AuthIn):
+    """Verify the settings PIN (used by the Settings page gate)."""
+    if not check_pin(body.pin):
+        raise HTTPException(401, "Invalid PIN")
+    return {"success": True}
 
 KINDS = {"esp32_fan", "wiz", "tapo", "dreo"}
 ROLES = {"light", "heater", "humidifier", "exhaust", "energy", "other"}
@@ -49,7 +62,7 @@ def list_devices():
         session.close()
 
 
-@router.post("/devices")
+@router.post("/devices", dependencies=[Depends(require_pin)])
 def create_device(body: DeviceIn):
     if body.kind not in KINDS:
         raise HTTPException(400, f"kind must be one of {sorted(KINDS)}")
@@ -65,7 +78,7 @@ def create_device(body: DeviceIn):
         session.close()
 
 
-@router.patch("/devices/{device_id}")
+@router.patch("/devices/{device_id}", dependencies=[Depends(require_pin)])
 def update_device(device_id: int, body: DevicePatch):
     session = SessionLocal()
     try:
@@ -88,7 +101,7 @@ def update_device(device_id: int, body: DevicePatch):
         session.close()
 
 
-@router.delete("/devices/{device_id}")
+@router.delete("/devices/{device_id}", dependencies=[Depends(require_pin)])
 def delete_device(device_id: int):
     session = SessionLocal()
     try:
@@ -121,7 +134,7 @@ async def live_status(device_id: int):
         return {"available": False, "error": str(e)}
 
 
-@router.post("/devices/{device_id}/detect_sensors")
+@router.post("/devices/{device_id}/detect_sensors", dependencies=[Depends(require_pin)])
 async def detect_sensors(device_id: int):
     """Re-scan the OneWire bus on the ESP32 and refresh the cached status."""
     session = SessionLocal()
@@ -148,9 +161,9 @@ class SensorNameIn(BaseModel):
     name: str
 
 
-@router.post("/devices/{device_id}/sensor_name")
+@router.post("/devices/{device_id}/sensor_name", dependencies=[Depends(require_pin)])
 async def rename_sensor(device_id: int, body: SensorNameIn):
-    """Rename a DS18B20 sensor. Stored in the app DB — the ESP32's own NVS name
+    """Rename a DS18B20 sensor. Stored in the app DB - the ESP32's own NVS name
     storage silently drops names (its keys are capped below the address length)."""
     session = SessionLocal()
     try:

@@ -52,9 +52,23 @@ export type PlantEvent = {
   notes: string
 }
 
+export function getPin(): string {
+  try {
+    return sessionStorage.getItem('tent_pin') ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export function setPin(pin: string) {
+  try {
+    sessionStorage.setItem('tent_pin', pin)
+  } catch {}
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Pin': getPin() },
     ...options,
   })
   if (!res.ok) {
@@ -69,6 +83,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  verifyPin: (pin: string) => request<{ success: boolean }>('/api/auth', { method: 'POST', body: JSON.stringify({ pin }) }),
   devices: () => request<Device[]>('/api/devices'),
   createDevice: (d: Partial<Device>) => request<Device>('/api/devices', { method: 'POST', body: JSON.stringify(d) }),
   updateDevice: (id: number, d: Partial<Device>) =>
