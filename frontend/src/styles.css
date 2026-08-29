@@ -53,6 +53,13 @@ nav.tabs button {
 nav.tabs button:hover { background: var(--surface); }
 nav.tabs button.active { background: var(--surface); color: var(--ink); border-color: var(--border); }
 
+@media (max-width: 600px) {
+  #root { padding: 12px; }
+  header.topbar { flex-wrap: wrap; gap: 10px; }
+  nav.tabs { margin-left: 0; width: 100%; gap: 2px; }
+  nav.tabs button { flex: 1; padding: 8px 4px; font-size: 14px; text-align: center; }
+}
+
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 
 .card {
