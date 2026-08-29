@@ -7,11 +7,20 @@ async def get_status(ip: str, config: dict) -> dict:
     light = wizlight(ip)
     try:
         state = await light.updateState()
-        is_on = state.get_state()
+        # some pywizlight versions return a list of PilotParser objects
+        if isinstance(state, list):
+            state = state[0] if state else None
+        if state is None:
+            return {"available": False, "error": "no response from plug"}
+        is_on = bool(state.get_state())
+        try:
+            brightness = state.get_brightness() if is_on else 0
+        except Exception:
+            brightness = 0
         return {
             "available": True,
             "is_on": is_on,
-            "brightness": state.get_brightness() if is_on else 0,
+            "brightness": brightness,
         }
     finally:
         try:

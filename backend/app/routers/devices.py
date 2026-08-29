@@ -204,6 +204,18 @@ async def device_action(device_id: int, body: ActionIn):
     try:
         if device.kind == "esp32_fan" and body.action == "speed":
             return await esp32.set_speed(device.ip, cfg, body.value or 0)
+        if device.kind == "wiz" and body.action == "test":
+            # toggle for 5 seconds, then restore the original state
+            status = await wiz.get_status(device.ip, cfg)
+            if not status.get("available"):
+                raise HTTPException(502, f"plug not reachable: {status.get('error')}")
+            was_on = bool(status.get("is_on"))
+            await (wiz.turn_off(device.ip) if was_on else wiz.turn_on(device.ip))
+            await asyncio.sleep(5)
+            await (wiz.turn_on(device.ip) if was_on else wiz.turn_off(device.ip))
+            if device_id in poller.latest:
+                poller.latest[device_id]["is_on"] = was_on
+            return {"success": True, "restored": "on" if was_on else "off"}
         if device.kind == "wiz" and body.action in ("on", "off"):
             result = await (wiz.turn_on(device.ip) if body.action == "on" else wiz.turn_off(device.ip))
             if device_id in poller.latest:

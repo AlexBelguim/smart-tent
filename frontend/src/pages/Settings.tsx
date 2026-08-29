@@ -371,6 +371,11 @@ function DeviceDialog({
               <ManualSpeed device={device} disabled={form.auto_enabled} />
             </div>
           )}
+          {isWiz && device && (
+            <div className="wide" style={{ borderTop: '1px solid var(--grid)', paddingTop: 10 }}>
+              <TestSwitch device={device} />
+            </div>
+          )}
           {isEsp && (
             <>
               <div className="wide" style={{ borderTop: '1px solid var(--grid)', paddingTop: 10 }}>
@@ -564,6 +569,39 @@ function DeviceDialog({
         </div>
       </form>
     </dialog>
+  )
+}
+
+function TestSwitch({ device }: { device: Device }) {
+  const [testing, setTesting] = useState(false)
+  const [result, setResult] = useState('')
+
+  const test = async () => {
+    setTesting(true)
+    setResult('')
+    try {
+      await api.action(device.id, 'test')
+      setResult('✓ toggled and restored')
+    } catch (e: any) {
+      setResult(`✗ ${e.message}`)
+    } finally {
+      setTesting(false)
+      setTimeout(() => setResult(''), 4000)
+    }
+  }
+
+  return (
+    <div className="row spread">
+      <span className="small" style={{ color: 'var(--ink-2)' }}>
+        Test switch — toggles for 5 s, then puts it back
+      </span>
+      <span className="row" style={{ gap: 8 }}>
+        {result && <span className="small">{result}</span>}
+        <button className="btn" type="button" disabled={testing} onClick={test}>
+          {testing ? 'Testing…' : '⚡ Test'}
+        </button>
+      </span>
+    </div>
   )
 }
 
