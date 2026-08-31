@@ -17,6 +17,12 @@ log = logging.getLogger("poller")
 latest: dict[int, dict] = {}  # device_id -> last known status (+ "updated" iso timestamp)
 _dreo_last_poll: dict[int, float] = {}
 
+# A single failed poll is normal (the ESP32 blocks ~750ms while reading its
+# DS18B20s and can miss a request); only report offline after this many
+# consecutive failures.
+_fail_streaks: dict[int, int] = {}
+OFFLINE_AFTER = 3
+
 
 async def fetch_status(device: Device) -> dict:
     cfg = device.config
@@ -102,7 +108,16 @@ async def poll_once(store: bool = True):
             try:
                 status = await fetch_status(device)
             except Exception as e:
-                status = {"available": False, "error": str(e)}
+                status = {"available": False, "error": str(e) or type(e).__name__}
+
+            if status.get("available"):
+                _fail_streaks[device.id] = 0
+            else:
+                streak = _fail_streaks.get(device.id, 0) + 1
+                _fail_streaks[device.id] = streak
+                prev = latest.get(device.id)
+                if prev is not None and prev.get("available") and streak < OFFLINE_AFTER:
+                    continue  # transient blip: keep showing the last good status
 
             status["updated"] = datetime.now().isoformat(timespec="seconds")
             latest[device.id] = status
